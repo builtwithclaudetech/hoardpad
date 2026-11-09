@@ -1,0 +1,76 @@
+# .NET / Visual Studio build outputs
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.vsidx
+*.vspscc
+*.vcxproj.filters
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+project.lock.json
+project.assets.json
+
+# ...but the vendored feed IS committed: DragonScrub is not on nuget.org, so
+# ./packages/DragonScrub.<version>.nupkg is the only copy (see NuGet.config).
+!/packages/
+!/packages/*.nupkg
+
+# Rider / JetBrains
+.idea/
+*.sln.iml
+
+# OS cruft
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# Logs / temp
+*.log
+*.tmp
+*.temp
+[Ll]og/
+[Ll]ogs/
+
+# Published output (dotnet publish)
+publish/
+
+# Self-contained publish artifacts
+*.exe
+*.pdb
+
+# User secrets / local config overrides
+appsettings.local.json
+secrets.json
+
+# Python bytecode caches
+hooks/__pycache__/
+
+# Build/test artifacts + screenshots (regenerated per run)
+artifacts/
+
+# Live-smoke-test scratch (not source; keep the directory, ignore contents)
+temp/
+
+# AI-turn scratch output from live-verify / runner AI probes
+turn*.out
+turn*.err
+
+# Local PII denylist (private; never committed)
+/.pii-denylist
+
+# Local secrets-audit record (private; never committed)
+/.secrets-audit-pass.json
+
+# Local private files; never commit
+/personal-info.md
+
+# Environment / credential files; never commit
+.env
+*.env

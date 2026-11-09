@@ -1,0 +1,9 @@
+# Normalize line endings in the repository to LF on every OS. Several tests compare
+# text fixtures, and the bundled hook script must keep LF so its shebang line works
+# on Linux; a Windows checkout would otherwise convert them to CRLF.
+* text=auto eol=lf
+
+# Binary files: never touched by line-ending normalization.
+*.nupkg binary
+*.ico binary
+*.png binary

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- HoardPad.Host — the C-9 seam implementations; the ONLY project with OS
+       syscalls / P-Invoke / RID-conditional code (architecture §1.3).
+       References Core (to implement its abstractions). One source compiles for
+       both RIDs. -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\HoardPad.Core\HoardPad.Core.csproj" />
+  </ItemGroup>
+
+  <!-- CRC-32/ISO-HDLC for the M2.1 append-log frame (version pinned in CPM). -->
+  <ItemGroup>
+    <PackageReference Include="System.IO.Hashing" />
+  </ItemGroup>
+
+  <!-- FR-6 charset detection (M8.3): the UTF.Unknown-backed EncodingDetector lives behind the
+       IEncodingDetector seam HERE in Host (architecture §1.3 / OQ-ARCH-4). UTF.Unknown NEVER enters
+       HoardPad.Core (§2.1 invariant 1). Version pinned in Directory.Packages.props (CPM). -->
+  <ItemGroup>
+    <PackageReference Include="UTF.Unknown" />
+  </ItemGroup>
+
+  <!-- Expose internal members to the Host test project (e.g. CapStateStore.StableFileName for
+       per-file assertions in the stable-filename and corrupt-.ver tests). -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>HoardPad.Host.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

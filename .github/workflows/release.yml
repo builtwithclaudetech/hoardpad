@@ -1,0 +1,241 @@
+name: Release
+
+# Push a tag like v1.0.0 to build both platform zips and publish a GitHub Release.
+# The release notes are the "## [1.0.0]" section of CHANGELOG.md; the run fails
+# up front if that section is missing.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build and release, e.g. v1.0.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  # Avalonia.BuildServices (in the restore graph) sends build telemetry unless this
+  # variable is present; the variable's presence alone opts out.
+  AVALONIA_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  # Resolve and validate the tag, and extract the release notes, before spending
+  # any build minutes.
+  prepare:
+    name: Prepare (tag + release notes)
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Resolve tag and version
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="$INPUT_TAG"
+          else
+            tag="$REF_NAME"
+          fi
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$ ]]; then
+            echo "::error::Tag '$tag' is not of the form vMAJOR.MINOR.PATCH[-prerelease]"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4.2.2
+        with:
+          ref: refs/tags/${{ steps.meta.outputs.tag }}
+
+      # The binaries are stamped from <Version> in Directory.Build.props, not from the
+      # tag, so a tag that disagrees with it would ship mislabeled binaries.
+      - name: Check tag matches Directory.Build.props <Version>
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          props_version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | head -n 1)
+          if [ "$props_version" != "$VERSION" ]; then
+            echo "::error::Tag version '$VERSION' does not match Directory.Build.props <Version> '$props_version'"
+            exit 1
+          fi
+          echo "version $VERSION matches Directory.Build.props"
+
+      - name: Extract release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Body of the "## [<version>]" section: from the line after that heading up to
+          # the next "## [" heading. Link-reference lines ("[1.0.0]: https://...") at the
+          # bottom of a Keep a Changelog file are dropped. Exit 3 if the heading is absent.
+          awk -v ver="$VERSION" '
+            { sub(/\r$/, "") }
+            /^## \[/ {
+              if (found) exit
+              if (index($0, "## [" ver "]") == 1) { found = 1; next }
+            }
+            found && /^\[[^]]+\]:[ \t]/ { next }
+            found { print }
+            END { if (!found) exit 3 }
+          ' CHANGELOG.md > release-notes.md || {
+            echo "::error::CHANGELOG.md has no '## [$VERSION]' section"
+            exit 1
+          }
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "::error::The '## [$VERSION]' section in CHANGELOG.md is empty"
+            exit 1
+          fi
+          echo "----- release notes -----"
+          cat release-notes.md
+
+      - uses: actions/upload-artifact@v4.4.3
+        with:
+          name: release-notes
+          path: release-notes.md
+          if-no-files-found: error
+
+  build:
+    name: Build ${{ matrix.rid }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - rid: linux-x64
+            os: ubuntu-latest
+          - rid: win-x64
+            os: windows-latest
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      RID: ${{ matrix.rid }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
+
+      # global.json pins sdk 8.0.0 (rollForward latestMinor); setup-dotnet's
+      # global-json-file input would try to install that literal, non-existent SDK
+      # version, so request 8.0.x and let global.json pick the installed 8.x SDK.
+      - uses: actions/setup-dotnet@v4.1.0
+        with:
+          dotnet-version: "8.0.x"
+
+      # `dotnet publish` of a project, never `dotnet build -r`: that fails with
+      # NETSDK1150 because the self-test stand-in exe is not self-contained.
+      - name: Publish
+        shell: bash
+        run: >
+          dotnet publish src/HoardPad.App/HoardPad.App.csproj
+          -c Release -r "$RID" --self-contained true
+          -p:PublishReadyToRun=true
+          -o "out/$RID"
+
+      # The AI safety hook and the self-test stand-in are required at runtime; a
+      # publish without them would ship an app whose AI write mode fails closed.
+      - name: Check publish output
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "out/$RID/hooks/deny_by_default.py"
+          if [ "$RID" = "win-x64" ]; then exe="HoardPad.App.exe"; standin="HoardPad.SelfTestStandIn.exe"; else exe="HoardPad.App"; standin="HoardPad.SelfTestStandIn"; fi
+          test -s "out/$RID/$exe"
+          test -s "out/$RID/$standin"
+          echo "hook + app + stand-in present in out/$RID"
+
+      - name: Stage zip contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="HoardPad-$VERSION-$RID"
+          mkdir -p stage
+          cp -a "out/$RID" "stage/$name"
+          cp LICENSE NOTICE README.md "stage/$name/"
+          echo "name=$name" >> "$GITHUB_ENV"
+
+      # MIT/BSD/MPL require the license text to ship with the binaries, so bundle every
+      # NuGet package's license/notice files plus the .NET runtime notices. The script
+      # exits non-zero if the package list is empty or the runtime notices are missing.
+      - name: Bundle third-party license texts
+        shell: bash
+        run: |
+          set -euo pipefail
+          py=""
+          for c in python3 python; do
+            if "$c" -c 'import sys; sys.exit(0 if sys.version_info[0] == 3 else 1)' 2>/dev/null; then py="$c"; break; fi
+          done
+          if [ -z "$py" ]; then echo "::error::no Python 3 on PATH"; exit 1; fi
+          "$py" scripts/collect-licenses.py \
+            --assets src/HoardPad.App/obj/project.assets.json \
+            --rid "$RID" \
+            --out "stage/$name/licenses" \
+            --spdx-dir licenses-spdx
+          test -s "stage/$name/licenses/dotnet-runtime/THIRD-PARTY-NOTICES.TXT"
+          test -s "stage/$name/licenses/_spdx/MIT.txt"
+
+      # Zipped on Linux so the executable bits survive inside the archive.
+      - name: Zip (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          cd stage
+          zip -r -X "../$name.zip" "$name"
+
+      - name: Zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -LiteralPath "stage/$env:name" -DestinationPath "$env:name.zip"
+
+      - uses: actions/upload-artifact@v4.4.3
+        with:
+          name: zip-${{ matrix.rid }}
+          path: ${{ env.name }}.zip
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4.1.8
+        with:
+          pattern: zip-*
+          merge-multiple: true
+          path: dist
+
+      - uses: actions/download-artifact@v4.1.8
+        with:
+          name: release-notes
+
+      - name: Create release
+        run: |
+          set -euo pipefail
+          ls -l dist
+          flags=()
+          # A SemVer prerelease tag (v1.0.0-rc.1) is published as a prerelease.
+          if [[ "$VERSION" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$TAG" dist/*.zip \
+            --verify-tag \
+            --title "HoardPad $VERSION" \
+            --notes-file release-notes.md \
+            "${flags[@]}"

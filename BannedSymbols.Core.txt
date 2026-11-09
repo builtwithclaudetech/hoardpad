@@ -1,0 +1,5 @@
+T:System.Runtime.InteropServices.DllImportAttribute; HoardPad.Core family is platform-free (C-9 / architecture §2.1 invariant 1) — P/Invoke belongs in HoardPad.Host.
+P:System.DateTime.UtcNow; Use the injected System.TimeProvider (architecture §1.2, TD §2.5) — no ambient wall-clock in the domain.
+P:System.DateTime.Now; Use the injected System.TimeProvider (architecture §1.2, TD §2.5) — no ambient wall-clock in the domain.
+T:System.IO.File; File I/O belongs behind the IAtomicFileStore / IAppDataPaths seams in HoardPad.Host (architecture §2.1).
+T:System.IO.Directory; Directory I/O belongs behind the host seams in HoardPad.Host (architecture §2.1).

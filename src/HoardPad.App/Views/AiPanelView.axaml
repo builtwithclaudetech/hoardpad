@@ -1,0 +1,455 @@
+<!--
+  AiPanelView.axaml — the M6.6 FR-22 in-window AI panel overlay (design §6.1).
+
+  An in-window overlay (a UserControl hosted in the editor's right Grid column — NEVER a separate OS
+  window). The regions, top to bottom (design §6.1):
+    (1) header   — backend selector + agency selector + downgrade badge + collapse/close
+    (2) sandbox  — the ALWAYS-VISIBLE sandbox-scope line (design §6.7)
+    (2b) docs    — PANEL-3 the AI-writable multi-doc checklist (feature-ai-multidoc-panel FR-MD-6)
+    (3) transcript — streaming conversation + file-op chips + safety-event chips
+    (4) caps     — the three live cap meters + the X% threshold label (design §6.5)
+    (5) tabs     — activity-log + pending-proposals (FR-39, no Apply-All)
+    (6) prompt   — multi-line input + the persistent [Stop] (NFR-8)
+
+  An overlay host Panel sits above region (3) so the inline safety confirms (AiConfirmView) show over
+  the transcript without a separate window (FR-22). Chrome uses brand.md §13 via DynamicResource; the
+  panel background is the overlay-surface token so it reads as distinct from the editor behind it.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:HoardPad.App.ViewModels"
+             xmlns:ai="using:HoardPad.App.Ai"
+             xmlns:views="using:HoardPad.App.Views"
+             xmlns:rec="using:HoardPad.Core.Records"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="560"
+             x:Class="HoardPad.App.Views.AiPanelView"
+             x:DataType="vm:AiPanelViewModel">
+
+  <UserControl.Resources>
+    <views:OpGlyphConverter x:Key="OpGlyph" />
+    <views:OutcomeBadgeConverter x:Key="OutcomeBadge" />
+    <views:CapEmphasisBrushConverter x:Key="CapEmphasis" />
+    <views:DangerBrushConverter x:Key="DangerBrush" />
+    <views:SandboxStateBrushConverter x:Key="SandboxBrush" />
+    <views:StatusBrushConverter x:Key="StatusBrush" />
+    <views:FocusWeightConverter x:Key="FocusWeight" />
+    <views:TranscriptBubbleConverter x:Key="TranscriptBubble" />
+    <views:TranscriptForegroundConverter x:Key="TranscriptForeground" />
+  </UserControl.Resources>
+
+  <Border Background="{DynamicResource Brand.OverlaySurface.Brush}"
+          BorderBrush="{DynamicResource Brand.OverlaySurface.Brush}"
+          BorderThickness="1,0,0,0">
+
+    <!-- The overlay host: the panel content + the confirm overlay stacked. -->
+    <Panel>
+      <!-- QA4-16: row 6 is the new draggable divider (a GridSplitter, matching the QA2-8 editor/AI-panel
+           column splitter's pattern) directly above the prompt input (now row 7, was row 6 — StatusBar
+           shifts from row 7 to row 8). Dragging it trades height between the Activity-log/Pending tabs
+           (row 5) and the prompt input, growing the input into a multi-line editor. C2: row 5 (tabs) gets an
+           explicit MinHeight so GridSplitter's OWN built-in constraint check (GetDeltaConstraints) refuses
+           to shrink it past a usable floor — this needs the verbose RowDefinitions syntax below (the
+           shorthand string form has no per-row MinHeight). The prompt row's own ceiling is enforced in
+           AiPanelView.axaml.cs's OnPromptSplitterDragDelta (relative to the live Transcript row height, not
+           expressible as a static XAML constraint). -->
+      <Grid Margin="0">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" MinHeight="28" />
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ===== (1) Header: backend + agency + downgrade badge + collapse/close ===== -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource Brand.SurfaceAlt.Brush}"
+                Padding="8,6"
+                BorderBrush="{DynamicResource Brand.OverlaySurface.Brush}"
+                BorderThickness="0,0,0,1">
+          <StackPanel Spacing="6">
+            <TextBlock Text="AI" FontWeight="Bold"
+                       Foreground="{DynamicResource Brand.Primary.Brush}" />
+
+            <!-- QA2-16: the header previously packed the backend selector, agency selector, and Test
+                 button into ONE horizontal row with two MinWidth="120" ComboBoxes — 240px of minimum
+                 width alone against a fixed 300px panel column (284px usable after 8px padding), so
+                 the Test button was pushed past the right edge. Wrapping into its own row (below the
+                 label) plus narrower MinWidths keeps every control on-screen at the panel's fixed width. -->
+            <WrapPanel Orientation="Horizontal">
+              <!-- Backend selector (FR-23). Switching does NOT reset caps (§6.3). -->
+              <ComboBox x:Name="BackendSelector"
+                        SelectedItem="{Binding SelectedBackend}"
+                        MinWidth="90"
+                        Margin="0,0,6,4"
+                        Foreground="{DynamicResource Brand.OnSurface.Brush}">
+                <ComboBox.Items>
+                  <rec:AiBackend>ClaudeCli</rec:AiBackend>
+                  <rec:AiBackend>AnthropicApi</rec:AiBackend>
+                  <rec:AiBackend>Local</rec:AiBackend>
+                </ComboBox.Items>
+              </ComboBox>
+
+              <!-- Agency selector (FR-27, FR-10) — the most safety-critical control. -->
+              <ComboBox x:Name="AgencySelector"
+                        ItemsSource="{Binding AgencyOptions}"
+                        SelectedItem="{Binding ConfiguredMode}"
+                        IsEnabled="{Binding !IsTurnInFlight}"
+                        MinWidth="90"
+                        Margin="0,0,6,4"
+                        Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+
+              <!-- BUG-4 self-test: a read-only connection check with timing report. -->
+              <Button Content="Test"
+                      Command="{Binding TestConnectionCommand}"
+                      FontSize="11"
+                      Padding="6,2"
+                      Margin="0,0,0,4"
+                      ToolTip.Tip="Test backend connection with a read-only prompt" />
+
+              <!-- QA4-2 (reopens QA3-11/BUG-5): a real, live-applied Model + Effort ComboBox pair — reads/
+                   writes the SAME CurrentModelId/CurrentEffortLevel the settings surface pushes into and
+                   SendAsync composes into the next TurnRequest (no separate copy, so the two stay in sync
+                   by construction). ComboBox (not a MenuFlyout) so it also renders under a no-WM headless
+                   Xvfb, unlike this project's documented MenuItem-popup gap (see BUG-5/QA3-11 notes). -->
+              <ComboBox x:Name="ModelSelector"
+                        ItemsSource="{x:Static vm:AiPanelViewModel.ModelOptions}"
+                        SelectedItem="{Binding CurrentModelId}"
+                        MinWidth="110"
+                        Margin="0,0,6,4"
+                        ToolTip.Tip="AI model for the next turn"
+                        Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+              <ComboBox x:Name="EffortSelector"
+                        ItemsSource="{x:Static vm:AiPanelViewModel.EffortOptions}"
+                        SelectedItem="{Binding CurrentEffortLevel}"
+                        MinWidth="80"
+                        Margin="0,0,6,4"
+                        ToolTip.Tip="Reasoning effort for the next turn"
+                        Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+
+              <!-- QA4-21: Model/Effort above are now a SESSION-LOCAL override (seeded from Settings at
+                   launch, never written back). This subtle link re-seeds them from the CURRENT saved
+                   settings on demand — the only way to pick up a Settings-tab change without relaunching. -->
+              <Button x:Name="ResetModelEffortButton"
+                      Content="↺ reset to app default"
+                      Command="{Binding ResetModelEffortToAppDefaultCommand}"
+                      FontSize="10"
+                      Padding="4,2"
+                      Margin="0,0,0,4"
+                      Background="Transparent"
+                      BorderThickness="0"
+                      Foreground="{DynamicResource Brand.Muted.Brush}"
+                      ToolTip.Tip="Re-seed Model/Effort from the current saved settings" />
+            </WrapPanel>
+
+            <!-- Effective-agency header (with the downgrade badge when downgraded — §6.2). -->
+            <TextBlock x:Name="AgencyHeaderText"
+                       Text="{Binding AgencyHeader}"
+                       FontSize="11"
+                       Foreground="{Binding HasDowngrade, Converter={StaticResource DangerBrush}}" />
+
+            <!-- FEAT-14: revert the most recent AI-applied settings change ("undoable to the extent
+                 settings changes can be"). Hidden when there is nothing to revert. -->
+            <Button x:Name="RevertSettingsChangeButton"
+                    Content="{Binding RevertSettingsChangeLabel}"
+                    Command="{Binding RevertLastSettingsChangeCommand}"
+                    FontSize="10"
+                    Padding="6,2"
+                    HorizontalAlignment="Left"
+                    IsVisible="{Binding CanRevertSettingsChange}" />
+          </StackPanel>
+        </Border>
+
+        <!-- ===== (2) Sandbox-scope line — ALWAYS VISIBLE (design §6.7) ===== -->
+        <Border Grid.Row="1"
+                Background="{DynamicResource Brand.Surface.Brush}"
+                Padding="8,4"
+                BorderBrush="{DynamicResource Brand.OverlaySurface.Brush}"
+                BorderThickness="0,0,0,1">
+          <TextBlock x:Name="SandboxLineText"
+                     Text="{Binding SandboxLine}"
+                     FontSize="11"
+                     TextWrapping="Wrap"
+                     Foreground="{Binding Sandbox, Converter={StaticResource SandboxBrush}}" />
+        </Border>
+
+        <!-- ===== (2b) PANEL-3: the AI-writable multi-doc checklist (feature-ai-multidoc-panel FR-MD-6) =====
+             One checkable row per open document, bound to AiPanelViewModel.MultiDoc.Rows. The FOCUSED doc is
+             marked (a jewel dot + name emphasis) and pre-checked (FR-MD-6(a)). Each row shows a truthful
+             writable/read-only affordance (FR-MD-6(b)); a checked out-of-folder row shows the approved
+             OQ-MD-2 note (FR-MD-6(c)); a scratch row is selectable but forces Save-As on check (FR-MD-6(d)).
+             Collapses to nothing when there are no open documents (HasMultiDocRows). -->
+        <Border Grid.Row="2"
+                x:Name="MultiDocSection"
+                Background="{DynamicResource Brand.SurfaceAlt.Brush}"
+                Padding="8,4"
+                BorderBrush="{DynamicResource Brand.OverlaySurface.Brush}"
+                BorderThickness="0,0,0,1"
+                IsVisible="{Binding HasMultiDocRows}">
+          <StackPanel Spacing="3">
+            <TextBlock Text="AI can write to"
+                       FontSize="11" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Brand.Muted.Brush}" />
+            <!-- FEAT-11: cap the visible checklist to ~4 rows (measured 34px/row incl. item margin, so
+                 4 * 34 = 136), then scroll for the rest. Horizontal scroll stays disabled — the row content
+                 already ellipsis-trims (TextTrimming="CharacterEllipsis") rather than needing to scroll wide. -->
+            <ScrollViewer MaxHeight="136"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+              <ItemsControl x:Name="MultiDocList" ItemsSource="{Binding MultiDoc.Rows}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="ai:MultiDocRowViewModel">
+                    <StackPanel Margin="0,1" Spacing="1">
+                      <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                        <!-- The checkbox — binds IsChecked (FR-MD-6(a)/(e)); a scratch check forces Save-As. -->
+                        <CheckBox Grid.Column="0"
+                                  IsChecked="{Binding IsChecked}"
+                                  MinWidth="0"
+                                  Padding="4,0,0,0"
+                                  VerticalAlignment="Center" />
+                        <!-- Focus dot — the focused document is visually distinguished (FR-MD-6(a)). -->
+                        <TextBlock Grid.Column="1"
+                                   Text="●"
+                                   FontSize="9"
+                                   Margin="0,0,4,0"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding IsFocused}"
+                                   Foreground="{DynamicResource Brand.Primary.Brush}"
+                                   ToolTip.Tip="Focused document" />
+                        <!-- The document name — jewel-emphasized when focused (Inter, §5). -->
+                        <TextBlock Grid.Column="2"
+                                   Text="{Binding DisplayName}"
+                                   FontSize="11"
+                                   TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center"
+                                   FontWeight="{Binding IsFocused, Converter={StaticResource FocusWeight}}"
+                                   Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+                        <!-- The write-posture affordance (FR-MD-6(b)) — mutually-exclusive badges, glyph+text
+                             so it is never color-alone (brand §8). Effective posture, so a checked read-only
+                             row shows "read-only", never "writable". -->
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                          <TextBlock Text="✎ writable"
+                                     FontSize="10"
+                                     IsVisible="{Binding IsEffectivelyWritable}"
+                                     Foreground="{DynamicResource Brand.Success.Brush}" />
+                          <TextBlock Text="🔒 read-only"
+                                     FontSize="10"
+                                     IsVisible="{Binding IsReadOnly}"
+                                     Foreground="{DynamicResource Brand.Muted.Brush}"
+                                     ToolTip.Tip="This file is read-only on disk; the AI cannot write to it." />
+                          <TextBlock Text="not-yet-saved"
+                                     FontSize="10"
+                                     IsVisible="{Binding IsScratch}"
+                                     Foreground="{DynamicResource Brand.Muted.Brush}"
+                                     ToolTip.Tip="Check to Save-As first — a never-saved buffer cannot be a write target." />
+                        </StackPanel>
+                      </Grid>
+                      <!-- OQ-MD-2 inline note on a CHECKED OUT-OF-FOLDER row (FR-MD-6(c)) — safety-forward,
+                           verbatim approved copy. Bound via the OutOfFolderNote const on the panel VM. -->
+                      <TextBlock x:Name="OutOfFolderNoteText"
+                                 Text="{x:Static vm:AiPanelViewModel.OutOfFolderNote}"
+                                 FontSize="10"
+                                 TextWrapping="Wrap"
+                                 Margin="24,0,0,2"
+                                 IsVisible="{Binding ShowOutOfFolderNote}"
+                                 Foreground="{DynamicResource Brand.Warning.Brush}" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </StackPanel>
+        </Border>
+
+        <!-- ===== (3) Conversation transcript (streaming + chips) ===== -->
+        <!-- QA3-17: ScrollViewer's default HorizontalScrollBarVisibility="Auto" measures its content with
+             infinite available width (that's what lets horizontal scrolling exist at all), so every child
+             TextBlock below — even with TextWrapping="Wrap" — was handed unbounded width and never actually
+             wrapped; long lines ran off-screen instead of scrolling horizontally (no visible scrollbar showed
+             it either, since none of these TextBlocks report a MinWidth). Disabling horizontal scroll here
+             forces the ScrollViewer to constrain measurement to the panel's own width, so Wrap takes effect.
+             The 8,6 inset used to live as ScrollViewer.Padding, but with horizontal scrolling disabled the
+             ScrollViewer/ScrollContentPresenter pair doesn't reliably subtract its own Padding from the width
+             it hands to content for wrapping (wrap decisions land close to the FULL unpadded width, so the
+             last character or two of each wrapped line rendered past the padded edge — verified visually via
+             a render-verify screenshot). Moving the inset onto the ItemsControl's own Margin uses the
+             ordinary (non-scroll-specific) measure/arrange path, which subtracts margin correctly. -->
+        <!-- x:Name is read by the code-behind (QA3-18) to auto-scroll to the newest transcript line. -->
+        <ScrollViewer Grid.Row="3"
+                      x:Name="TranscriptScroll"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Background="{DynamicResource Brand.Surface.Brush}">
+          <ItemsControl x:Name="TranscriptList" Margin="8,6" ItemsSource="{Binding Transcript}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="ai:TranscriptLine">
+                <!-- FEAT-12: a single Border + single TextBlock (never duplicated per-Kind) carries the
+                     sender-distinct bubble styling, keyed off Kind via TranscriptBubbleConverter (brand.md
+                     §13). A user message gets an accent-bordered overlay-surface bubble; an AI reply gets a
+                     primary (jewel)-bordered surface-alt bubble, matching the header's "AI" label tone. Every
+                     other kind (file-op chip, safety chip, system note) resolves a transparent border/
+                     background and zero padding, so it renders exactly as before. -->
+                <ContentControl Margin="0,2">
+                  <Border Background="{Binding Kind, Converter={StaticResource TranscriptBubble}, ConverterParameter=Background}"
+                          BorderBrush="{Binding Kind, Converter={StaticResource TranscriptBubble}, ConverterParameter=Border}"
+                          BorderThickness="1"
+                          CornerRadius="4"
+                          Padding="{Binding Kind, Converter={StaticResource TranscriptBubble}, ConverterParameter=Padding}">
+                    <!-- FEAT-15: FontFamily/FontSize resolve the Settings ▸ AI section's per-sender override
+                         (UnsetValue for a non-message kind, falling back to the inherited chrome font).
+                         Foreground resolves the whole line: a danger chip always wins; otherwise the
+                         per-sender color override, else the pre-FEAT-15 on-surface default. -->
+                    <TextBlock Text="{Binding Text}"
+                               TextWrapping="Wrap"
+                               FontFamily="{Binding Kind, Converter={StaticResource TranscriptBubble}, ConverterParameter=FontFamily}"
+                               FontSize="{Binding Kind, Converter={StaticResource TranscriptBubble}, ConverterParameter=FontSize}"
+                               Foreground="{Binding Converter={StaticResource TranscriptForeground}}" />
+                  </Border>
+                </ContentControl>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+
+        <!-- ===== (4) The three cap meters + X% threshold (design §6.5) ===== -->
+        <Border Grid.Row="4"
+                Background="{DynamicResource Brand.SurfaceAlt.Brush}"
+                Padding="8,4"
+                BorderBrush="{DynamicResource Brand.OverlaySurface.Brush}"
+                BorderThickness="0,1,0,0">
+          <StackPanel Spacing="2">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <TextBlock Text="caps" FontSize="11" Foreground="{DynamicResource Brand.Muted.Brush}" />
+              <TextBlock x:Name="CreatedMeterText" FontSize="11"
+                         Foreground="{Binding CreatedMeter.Emphasis, Converter={StaticResource CapEmphasis}}">
+                <Run Text="created " /><Run Text="{Binding CreatedMeter.Display}" />
+              </TextBlock>
+              <TextBlock x:Name="DestructiveMeterText" FontSize="11"
+                         Foreground="{Binding DestructiveMeter.Emphasis, Converter={StaticResource CapEmphasis}}">
+                <Run Text="destructive " /><Run Text="{Binding DestructiveMeter.Display}" />
+              </TextBlock>
+              <TextBlock x:Name="TouchedMeterText" FontSize="11"
+                         Foreground="{Binding TouchedMeter.Emphasis, Converter={StaticResource CapEmphasis}}">
+                <Run Text="touched " /><Run Text="{Binding TouchedMeter.Display}" />
+              </TextBlock>
+            </StackPanel>
+            <TextBlock Text="{Binding CapThresholdLabel}" FontSize="10"
+                       Foreground="{DynamicResource Brand.Muted.Brush}" />
+          </StackPanel>
+        </Border>
+
+        <!-- ===== (5) Activity-log + Pending tabs (FR-39 — no Apply-All) ===== -->
+        <Border Grid.Row="5"
+                Background="{DynamicResource Brand.SurfaceAlt.Brush}"
+                Padding="8,2"
+                BorderBrush="{DynamicResource Brand.OverlaySurface.Brush}"
+                BorderThickness="0,1,0,0">
+          <TabControl>
+            <TabItem Header="Activity log">
+              <TextBlock Text="Every AI file op is logged here (applied / blocked / undone / queued)."
+                         FontSize="11" TextWrapping="Wrap" Margin="0,4"
+                         Foreground="{DynamicResource Brand.Muted.Brush}" />
+            </TabItem>
+            <TabItem>
+              <TabItem.Header>
+                <TextBlock>
+                  <Run Text="Pending (" /><Run Text="{Binding PendingCount}" /><Run Text=")" />
+                </TextBlock>
+              </TabItem.Header>
+              <ItemsControl x:Name="PendingList" ItemsSource="{Binding Pending}" Margin="0,4">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="ai:PendingProposalViewModel">
+                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2">
+                      <TextBlock Text="{Binding TargetPath}" FontSize="11" VerticalAlignment="Center"
+                                 Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+                      <!-- Each proposal applied individually — NO batch Apply-All (llm F5). -->
+                      <Button Content="Apply" FontSize="11"
+                              Command="{Binding $parent[ItemsControl].((vm:AiPanelViewModel)DataContext).ApplyPendingCommand}"
+                              CommandParameter="{Binding}" />
+                      <Button Content="Discard" FontSize="11"
+                              Command="{Binding $parent[ItemsControl].((vm:AiPanelViewModel)DataContext).DiscardPendingCommand}"
+                              CommandParameter="{Binding}" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </TabItem>
+          </TabControl>
+        </Border>
+
+        <!-- ===== QA4-16: draggable divider above the prompt input — dragging it up/down trades height
+             between the Activity-log/Pending tabs (row 5, above) and the prompt input (row 7, below),
+             growing the input into a multi-line editor. Mirrors the QA2-8 AiPanelSplitter pattern
+             (MainWindow.axaml), just row- instead of column-resizing. ===== -->
+        <GridSplitter Grid.Row="6"
+                      x:Name="PromptResizeSplitter"
+                      Height="4"
+                      ResizeDirection="Rows"
+                      Background="{DynamicResource Brand.OverlaySurface.Brush}"
+                      ToolTip.Tip="Drag to resize the prompt input" />
+
+        <!-- ===== (6) Prompt input + persistent [Stop] (NFR-8) ===== -->
+        <Border Grid.Row="7"
+                Background="{DynamicResource Brand.SurfaceAlt.Brush}"
+                Padding="8,6"
+                BorderBrush="{DynamicResource Brand.OverlaySurface.Brush}"
+                BorderThickness="0,1,0,0">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+            <TextBox Grid.Column="0"
+                     x:Name="PromptBox"
+                     Text="{Binding PromptInput}"
+                     Watermark="Ask the AI…"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     VerticalContentAlignment="Top"
+                     MinHeight="34"
+                     FontFamily="{DynamicResource Brand.Font.AiInput}"
+                     FontSize="{DynamicResource Brand.Font.AiInputSize}"
+                     Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+            <StackPanel Grid.Column="1" Orientation="Vertical" Spacing="4">
+              <Button x:Name="SendButton"
+                      Content="Send"
+                      Command="{Binding SendCommand}"
+                      IsVisible="{Binding !IsTurnInFlight}" />
+              <!-- The persistent [Stop] — visible whenever a turn is in flight (NFR-8). -->
+              <Button x:Name="StopButton"
+                      Content="Stop"
+                      Command="{Binding StopCommand}"
+                      IsVisible="{Binding IsTurnInFlight}"
+                      Background="{DynamicResource Brand.Danger.Brush}"
+                      Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+            </StackPanel>
+          </Grid>
+        </Border>
+
+        <!-- ===== (7) BUG-4 status line — backend health below the prompt ===== -->
+        <Border Grid.Row="8"
+                x:Name="StatusBarBorder"
+                Background="{DynamicResource Brand.SurfaceAlt.Brush}"
+                Padding="8,2"
+                BorderBrush="{DynamicResource Brand.OverlaySurface.Brush}"
+                BorderThickness="0,1,0,0">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0"
+                       x:Name="StatusBarText"
+                       Text="{Binding BackendStatusMessage}"
+                       FontSize="10"
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="{Binding BackendStatus, Converter={StaticResource StatusBrush}}" />
+          </Grid>
+        </Border>
+      </Grid>
+
+      <!-- The inline-confirm overlay host (the production AiConfirmService adds AiConfirmView here so the
+           FR-10 confirms show OVER the transcript without a separate OS window — FR-22). -->
+      <Panel x:Name="ConfirmOverlayHost"
+             VerticalAlignment="Center"
+             HorizontalAlignment="Center" />
+    </Panel>
+  </Border>
+</UserControl>

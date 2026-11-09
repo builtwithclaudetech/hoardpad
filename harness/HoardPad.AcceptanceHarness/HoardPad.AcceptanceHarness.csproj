@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- HoardPad.AcceptanceHarness is the SC-5 end-to-end acceptance gate (architecture §1.6, M9.3).
+       This is a TEST project (xUnit): the SC-5(i)/(ia)/no-re-arm gates are [Fact]/[Theory] tests
+       run by `dotnet test` with a name filter. It COMPOSES the production artifacts: it drives the
+       real Python deny-by-default hook as a subprocess and exercises the real Core.Ai shared
+       file-ops service + Host O_EXCL cap-state store + path resolver + sandbox policy, asserting the
+       whole AI-sandbox safety model end-to-end on linux-x64 BEFORE the App AI panel is built. -->
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\HoardPad.Core.Ai\HoardPad.Core.Ai.csproj" />
+    <ProjectReference Include="..\..\src\HoardPad.Host\HoardPad.Host.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+
+  <!-- Serialize test collections: the SC-5 gates each spawn child python3 processes (the production
+       deny_by_default.py hook) and take the O_EXCL cap-state lock; running every class in parallel
+       oversubscribes this box and races the lock. Serial execution keeps the suite deterministic —
+       same posture as tests/HoardPad.Host.Tests. -->
+  <ItemGroup>
+    <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

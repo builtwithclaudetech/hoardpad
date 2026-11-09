@@ -1,0 +1,42 @@
+<!--
+  DeleteParentDialog.axaml — the delete-non-empty-parent MODAL prompt (C-3, design §5.2).
+
+  A real modal Window shown via ShowDialog(owner): no other checklist mutation can race the pending
+  delete while the choice is open. Three actions — Delete whole section / Un-nest children / Cancel —
+  with Cancel taking INITIAL FOCUS (a destructive prompt must not delete a subtree on an accidental
+  Enter). Returns a DeleteParentChoice via the dialog result.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="HoardPad.App.Views.DeleteParentDialog"
+        Width="420" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource Brand.Surface.Brush}"
+        FontFamily="{DynamicResource Brand.Font.Ui}"
+        FontSize="{DynamicResource Brand.Font.UiSize}"
+        Title="Delete item?">
+
+  <StackPanel Margin="16" Spacing="14">
+
+    <TextBlock x:Name="PromptText"
+               TextWrapping="Wrap"
+               Foreground="{DynamicResource Brand.OnSurface.Brush}"
+               Text="Delete this item?" />
+
+    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+      <Button x:Name="DeleteSubtreeButton"
+              Content="Delete whole section"
+              Click="OnDeleteSubtree" />
+      <Button x:Name="PromoteButton"
+              Content="Un-nest the items (move out)"
+              Click="OnPromote" />
+      <Button x:Name="CancelButton"
+              Content="Cancel"
+              IsCancel="True"
+              Click="OnCancel" />
+    </StackPanel>
+
+  </StackPanel>
+</Window>

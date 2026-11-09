@@ -1,0 +1,103 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- HoardPad.App — the Avalonia head: UI, MVVM, composition root. The ONLY
+       project that references Avalonia / AvaloniaEdit (architecture §1.4, §2.1
+       invariant 4). References all four other product projects. -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- Per-RID self-contained publish targets (architecture §7.1). -->
+    <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
+    <!-- Self-contained per-RID is the SHIP default (architecture §7.1: each RID bundles the .NET
+         runtime — no machine-wide runtime dependency). Scoped to a RID publish via the condition so a
+         plain `dotnet build`/`dotnet test` (no RuntimeIdentifier) is unaffected; a `dotnet publish -r
+         <rid>` is self-contained without the caller having to pass -p:SelfContained=true. Without this,
+         a RID publish defaults to framework-dependent (no bundled runtime), violating §7.1 / C-3. -->
+    <SelfContained Condition="'$(RuntimeIdentifier)' != ''">true</SelfContained>
+    <!-- OS executable icon (win-x64). The brand .ico (brand.md §6 composited egg). -->
+    <ApplicationIcon>..\..\assets\brand\hoardpad.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!-- The composition root + interim detector are internal; the Skia-headless test asserts
+       against the exact production registration set (architecture §8.1). -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="HoardPad.App.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\HoardPad.Core\HoardPad.Core.csproj" />
+    <ProjectReference Include="..\HoardPad.Host\HoardPad.Host.csproj" />
+    <ProjectReference Include="..\HoardPad.Core.Ai\HoardPad.Core.Ai.csproj" />
+    <ProjectReference Include="..\HoardPad.Core.Checklist\HoardPad.Core.Checklist.csproj" />
+    <!-- STF-3 (Option 1): the self-test stand-in exe. Ordinary ProjectReference, same RID —
+         `dotnet publish -r <rid>` on App propagates the RID to this reference and produces its
+         own per-RID self-contained apphost in App's output tree (bin/.../HoardPad.SelfTestStandIn
+         [.exe]). ToolPermissionHookHost resolves it next to the running app, mirroring
+         BundledHookScriptPath (CompositionRoot.SelfTestStandInPath). Never referenced by
+         AgentBackend — the production turn-launch path is untouched. -->
+    <ProjectReference Include="..\HoardPad.SelfTestStandIn\HoardPad.SelfTestStandIn.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="Avalonia.AvaloniaEdit" />
+    <PackageReference Include="AvaloniaEdit.TextMate" />
+    <PackageReference Include="TextMateSharp.Grammars" />
+    <PackageReference Include="Markdig" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <!-- DS-1: DragonScrub, the shared scrub engine (DR-DS-1). Version pinned
+         centrally in Directory.Packages.props; resolved from the local
+         folder feed NuGet.config declares for it (not on nuget.org). -->
+    <PackageReference Include="DragonScrub" />
+    <!-- Real Windows-1252 encoding (CP-1252). Encoding.Latin1 (ISO-8859-1) differs in the 0x80–0x9F
+         range, so we need this package + RegisterProvider to resolve windows-1252 correctly.
+         The provider is registered ONCE at app startup (CompositionRoot.ConfigureServices). -->
+    <PackageReference Include="System.Text.Encoding.CodePages" />
+    <!-- UTF.Unknown (the real M8.3 IEncodingDetector backing) does NOT live here in App: it is
+         referenced in HoardPad.Host.csproj, behind the IEncodingDetector seam, because the concrete
+         EncodingDetector is a Host impl (architecture §1.3 / OQ-ARCH-4). §2.1 invariant 1 keeps
+         UTF.Unknown out of Core; keeping it in Host (not App) keeps the package next to its only user.
+         The central <PackageVersion> stays in Directory.Packages.props (CPM). -->
+  </ItemGroup>
+
+  <!-- Brand window icon, embedded as an Avalonia resource (avares://). The OS-level
+       exe icon is the <ApplicationIcon> above; this is the in-window title-bar icon. -->
+  <ItemGroup>
+    <AvaloniaResource Include="..\..\assets\brand\hoardpad.ico" Link="Assets\hoardpad.ico" />
+  </ItemGroup>
+
+  <!-- Bundle the production deny-by-default hook next to the published app
+       (architecture §7.4) so ToolPermissionHookHost resolves it at runtime. The runtime path is
+       AppContext.BaseDirectory + "hooks/deny_by_default.py" (CompositionRoot.BundledHookScriptPath),
+       so the Link preserves the hooks/ subdirectory. CopyToPublishDirectory is set EXPLICITLY (not
+       left to MSBuild's implicit Content default) so the hook is guaranteed in BOTH RID publish
+       outputs (M10.1) — the production ToolPermissionHookHost fail-closes without it. -->
+  <ItemGroup>
+    <Content Include="..\..\hooks\deny_by_default.py" Link="hooks\deny_by_default.py"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- FR-7 supplemental TextMate grammars (TD §5.6). Bundled as embedded resources (offline,
+       A-7/NFR-7), parsed lazily on first use by HoardPadRegistryOptions. Only TOML is supplemental:
+       the stock TextMateSharp.Grammars 2.0.4 set covers the other 19 v1 languages incl. Rust
+       (GetLanguageByExtension(".toml") returns null, so TOML is the one genuine gap). The resource
+       name resolves to HoardPad.App.Assets.grammars.toml.tmLanguage.json (default namespace + path).
+       TRIM IS LEFT OFF for v1 (M10.1 decision): architecture §7.3 makes trim OPTIONAL and only a safe
+       size win when R2R-paired, but Avalonia/AvaloniaEdit/TextMateSharp resolve XAML types and TextMate
+       grammars by name/reflection — trimming risks silently dropping a grammar (incl. this TOML embedded
+       resource) at runtime, the exact failure a publish-time headless check cannot catch. A working R2R
+       self-contained publish is the priority, so PublishTrimmed stays unset. IF trim is ever enabled,
+       pin BOTH TextMateSharp.Grammars AND this embedded resource as trim roots (TrimmerRootAssembly +
+       a TrimmerRootDescriptor for the resource) per §7.3. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\grammars\toml.tmLanguage.json" />
+  </ItemGroup>
+
+</Project>

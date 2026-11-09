@@ -1,0 +1,224 @@
+<!--
+  ChecklistView.axaml — the `.hoard` checklist custom control (FR-30…FR-34, FR-41, FR-42, design §5).
+
+  An ItemsControl (NOT a stock TreeView, FR-30 build note) over the display-ordered visible-row projection
+  the ChecklistViewModel computes from the Core.Checklist pure functions. Each row is a ChecklistItemControl
+  (so its tree-ARIA AutomationPeer applies, C-5). Per row, left to right:
+    - drag handle (PathIcon, §5.2 discoverability) — triggers intra-sibling-group reorder
+    - ▸/▾ collapse twisty (parents only — FR-42)
+    - per-tier indent inset
+    - the checkbox (FR-30)
+    - the item text (struck when checked, §5.1)
+    - the "( section complete )" badge on a checked parent
+    - delete affordance
+  The row also carries a context menu with Indent / Outdent / Move up / Move down (§5.1/§5.2, C-2a).
+  Completion-locked rows grey out via IsEnabled (FR-41). Chrome uses the brand.md §13 tokens via DynamicResource.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:HoardPad.App.ViewModels"
+             xmlns:views="using:HoardPad.App.Views"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="400"
+             x:Class="HoardPad.App.Views.ChecklistView"
+             x:DataType="vm:ChecklistViewModel"
+             Background="{DynamicResource Brand.Surface.Brush}">
+
+  <UserControl.Resources>
+    <views:DepthToIndentConverter x:Key="DepthToIndent" />
+    <views:CollapsedToGlyphConverter x:Key="CollapsedToGlyph" />
+    <views:StruckToDecorationConverter x:Key="StruckToDecoration" />
+  </UserControl.Resources>
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
+
+    <!-- Header: title + mode selector (design §5.1/§5.4). -->
+    <Border Grid.Row="0"
+            Background="{DynamicResource Brand.SurfaceAlt.Brush}"
+            BorderBrush="{DynamicResource Brand.OverlaySurface.Brush}"
+            BorderThickness="0,0,0,1"
+            Padding="10,6">
+      <Grid ColumnDefinitions="*,Auto">
+        <!-- Title box: LostFocus + Enter → SetTitle (Fix 4 — the coalesced title persist). -->
+        <TextBox Grid.Column="0"
+                 x:Name="TitleBox"
+                 Text="{Binding DisplayTitle}"
+                 Watermark="Untitled checklist"
+                 BorderThickness="0"
+                 Background="Transparent"
+                 Foreground="{DynamicResource Brand.OnSurface.Brush}"
+                 FontWeight="SemiBold"
+                 LostFocus="OnTitleLostFocus"
+                 KeyDown="OnTitleKeyDown" />
+        <ComboBox Grid.Column="1"
+                  x:Name="ModeSelector"
+                  MinWidth="160"
+                  SelectionChanged="OnModeSelectionChanged">
+          <ComboBoxItem Content="Strikethrough" />
+          <ComboBoxItem Content="Move to bottom" />
+          <ComboBoxItem Content="Hide when checked" />
+        </ComboBox>
+      </Grid>
+    </Border>
+
+    <!-- Save-failed banner (surfaces the write-queue fault — Fix 1). Hidden when SaveFailedMessage is null/empty. -->
+    <Border Grid.Row="1"
+            IsVisible="{Binding SaveFailedMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+            Background="#CC3300"
+            Padding="10,4">
+      <TextBlock Text="{Binding SaveFailedMessage}"
+                 Foreground="White"
+                 FontSize="12" />
+    </Border>
+
+    <!-- The visible-row ItemsControl (the projection from the Core pure functions). x:Name'd (QA4-19) so
+         code-behind can save/restore its scroll offset across the DataContext repoint on tab switch. -->
+    <ScrollViewer Grid.Row="2" x:Name="RowsScrollViewer">
+      <ItemsControl x:Name="Rows" ItemsSource="{Binding VisibleRows}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:ChecklistItemViewModel">
+            <views:ChecklistItemControl Focusable="True"
+                                        IsEnabled="{Binding IsEnabled}"
+                                        AutomationProperties.PositionInSet="{Binding PositionInSet}"
+                                        AutomationProperties.SizeOfSet="{Binding SizeOfSet}"
+                                        AutomationProperties.Name="{Binding Text}">
+              <!-- Row context menu: Indent / Outdent / Move up / Move down (§5.1/§5.2 discoverability, C-2a). -->
+              <views:ChecklistItemControl.ContextMenu>
+                <ContextMenu>
+                  <MenuItem Header="Indent" Tag="{Binding}" Click="OnContextIndentClick" />
+                  <MenuItem Header="Outdent" Tag="{Binding}" Click="OnContextOutdentClick" />
+                  <Separator />
+                  <MenuItem Header="Move up" Tag="{Binding}" Click="OnContextMoveUpClick" />
+                  <MenuItem Header="Move down" Tag="{Binding}" Click="OnContextMoveDownClick" />
+                </ContextMenu>
+              </views:ChecklistItemControl.ContextMenu>
+
+              <!-- Column 2 (twisty) is a FIXED 22px width — not Auto — so the slot is reserved on EVERY row
+                   regardless of IsParent (QA5-B5). Avalonia's IsVisible="False" removes a control from an
+                   Auto column's measurement entirely (that's the bug: a leaf row's Auto column collapsed to
+                   0px, landing its checkbox ~22px short of a full depth step); a fixed pixel column does not
+                   depend on child measurement, so it stays 22px whether or not the twisty inside it is
+                   IsVisible — and an invisible Button remains correctly non-hit-testable/non-focusable
+                   (Avalonia's own IsVisible semantics), so a leaf row's reserved slot is inert, not clickable. -->
+              <Grid ColumnDefinitions="Auto,Auto,22,Auto,*,Auto" Margin="0,1"
+                    DragDrop.AllowDrop="True">
+
+                <!-- Drag handle (PathIcon, §5.2; reorders within the sibling group on DragDrop). -->
+                <Border Grid.Column="0"
+                        Width="20"
+                        Cursor="SizeNorthSouth"
+                        Background="Transparent"
+                        Tag="{Binding}"
+                        PointerPressed="OnDragHandlePointerPressed"
+                        ToolTip.Tip="Drag to reorder">
+                  <PathIcon Data="M 4 5 H 16 M 4 9 H 16 M 4 13 H 16"
+                            Width="12" Height="12"
+                            Foreground="{DynamicResource Brand.Muted.Brush}" />
+                </Border>
+
+                <!-- Per-tier indent inset (the indent guide; Depth * 20px, §5.1). -->
+                <Border Grid.Column="1" Width="{Binding Depth, Converter={StaticResource DepthToIndent}}" />
+
+                <!-- Collapse twisty (parents only — FR-42). The 22px slot is reserved by the column
+                     definition above even when this Button is IsVisible="False" on a leaf row. -->
+                <Button Grid.Column="2"
+                        Width="22"
+                        Classes="twisty"
+                        IsVisible="{Binding IsParent}"
+                        Click="OnTwistyClick"
+                        Tag="{Binding}"
+                        ToolTip.Tip="Collapse / expand">
+                  <TextBlock Text="{Binding Collapsed, Converter={StaticResource CollapsedToGlyph}}"
+                             Foreground="{DynamicResource Brand.Muted.Brush}" />
+                </Button>
+
+                <!-- The checkbox (FR-30). Disabled when completion-locked (IsEnabled on the row). -->
+                <CheckBox Grid.Column="3"
+                          IsChecked="{Binding Checked, Mode=OneWay}"
+                          Click="OnCheckboxClick"
+                          Tag="{Binding}"
+                          VerticalAlignment="Center" />
+
+                <!-- Item text (struck when checked, §5.1) + the completed-parent text badge (F-CHK-WRAP /
+                     QA5-B4). A Grid (not the former horizontal StackPanel) so the text cell has a real
+                     BOUNDED width — a StackPanel hands its children unbounded measure width, which is why
+                     TextWrapping had no effect and an overlong line silently drew over the "✕" button
+                     (Avalonia panels don't clip children to their own bounds). Enter DOES NOT insert a
+                     newline here — OnItemTextKeyDown already intercepts Key.Enter to commit the edit and
+                     add a new sibling row (QA2-6); a real Ctrl+V paste of multi-line clipboard text is
+                     separately truncated at the first \n by Avalonia TextBox's own AcceptsReturn="False"
+                     (11.3.6) — either way, TextWrapping="Wrap" gives visual word-wrap without a literal
+                     \n ever reaching the persisted item text.
+
+                     C1 fix (review round 2): the badge is on its OWN row directly below the text — NOT a
+                     second column sharing the row with the text. A same-row "*,Auto" split let the Auto
+                     badge column claim its full ~140px unconditionally BEFORE the text got any width, so
+                     at a narrow panel width the text column could be squeezed to ~20px, wrapping almost
+                     character-by-character (measured: 1136px row height at a 260px window). A MinWidth
+                     floor on the text column fixes the height but creates a NEW defect — proven by
+                     measurement, not assumed — the badge's fixed width then exceeds the narrow column's
+                     remaining space and visually overflows past the "✕" delete button (measured: badge
+                     right edge 350px vs delete button left edge 230px at a 260px window). Putting the
+                     badge on its own row in the SAME single "*" column as the text means both are always
+                     bound by the identical available width, by construction — no tuned constant, no
+                     overflow, and the text's own width/height are now completely independent of whether
+                     the badge is visible at all (measured: row height stays ≤ ~175px at every width down
+                     to 260px with the badge visible, and the badge's own width never exceeds the shared
+                     column so it never overlaps the delete button). -->
+                <Grid Grid.Column="4" RowDefinitions="Auto,Auto" VerticalAlignment="Center">
+                  <TextBox Grid.Row="0"
+                           Text="{Binding Text}"
+                           IsVisible="{Binding !Checked}"
+                           TextWrapping="Wrap"
+                           BorderThickness="0"
+                           Background="Transparent"
+                           Foreground="{DynamicResource Brand.OnSurface.Brush}"
+                           LostFocus="OnTextCommitted"
+                           KeyDown="OnItemTextKeyDown"
+                           Tag="{Binding}" />
+                  <TextBlock Grid.Row="0"
+                             Text="{Binding Text}"
+                             IsVisible="{Binding Checked}"
+                             TextWrapping="Wrap"
+                             Foreground="{DynamicResource Brand.Muted.Brush}"
+                             TextDecorations="{Binding IsStruck, Converter={StaticResource StruckToDecoration}}" />
+                  <TextBlock Grid.Row="1"
+                             Text="( section complete )"
+                             IsVisible="{Binding IsCompletedParent}"
+                             TextWrapping="Wrap"
+                             Foreground="{DynamicResource Brand.Muted.Brush}"
+                             Margin="0,2,0,0" />
+                </Grid>
+
+                <!-- Delete affordance (FR-30). Routes to the modal prompt for a non-empty parent (C-3). -->
+                <Button Grid.Column="5"
+                        Content="✕"
+                        Classes="delete"
+                        Click="OnDeleteClick"
+                        Tag="{Binding}"
+                        ToolTip.Tip="Delete item" />
+              </Grid>
+
+            </views:ChecklistItemControl>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+
+    <!-- The always-present add-item row (design §5.1). Enter appends at the active tier. -->
+    <Border Grid.Row="3"
+            Background="{DynamicResource Brand.SurfaceAlt.Brush}"
+            BorderBrush="{DynamicResource Brand.OverlaySurface.Brush}"
+            BorderThickness="0,1,0,0"
+            Padding="10,6">
+      <TextBox x:Name="AddItemBox"
+               Watermark="+ Add item…"
+               BorderThickness="0"
+               Background="Transparent"
+               Foreground="{DynamicResource Brand.OnSurface.Brush}"
+               KeyDown="OnAddItemKeyDown" />
+    </Border>
+
+  </Grid>
+</UserControl>

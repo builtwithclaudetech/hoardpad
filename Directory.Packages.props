@@ -1,0 +1,83 @@
+<Project>
+
+  <!-- Central Package Management (architecture §2.3). Project .csproj files use
+       <PackageReference Include="..." /> with NO version attribute. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- Pre-empts the CPM transitive-pin footgun (§2.3): any transitive package
+         that also has a central <PackageVersion> is pinned to it, so a transitive
+         resolving above a central pin cannot become an NU1605 build break under
+         TreatWarningsAsErrors. -->
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <!-- === Avalonia head — App only (architecture §2.2). Avalonia pinned 11.3.6;
+       AvaloniaEdit/TextMate 11.4.1; the 11.3↔11.4 minor-line split is the
+       SPIKE-1-measured, runtime-compatible stack. === -->
+  <ItemGroup>
+    <PackageVersion Include="Avalonia" Version="11.3.6" />
+    <PackageVersion Include="Avalonia.Desktop" Version="11.3.6" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="11.3.6" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="11.3.6" />
+    <PackageVersion Include="Avalonia.AvaloniaEdit" Version="11.4.1" />
+    <PackageVersion Include="AvaloniaEdit.TextMate" Version="11.4.1" />
+    <PackageVersion Include="TextMateSharp.Grammars" Version="2.0.4" />
+    <PackageVersion Include="Markdig" Version="0.45.0" />
+  </ItemGroup>
+
+  <!-- === View-model layer + DI composition root — App only (§2.2 / architecture
+       §8.1). Microsoft.Extensions.DependencyInjection is the composition-root
+       container (8.0.x — offline-resolvable, aligned with the .NET 8 floor). === -->
+  <ItemGroup>
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+  </ItemGroup>
+
+  <!-- === FR-6 encoding detection — Host/App only, NEVER Core (§2.2, §1.2). === -->
+  <ItemGroup>
+    <PackageVersion Include="UTF.Unknown" Version="2.6.0" />
+    <!-- Provides real Windows-1252 (CP-1252) via Encoding.GetEncoding("windows-1252") after
+         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance). Required because
+         Encoding.Latin1 (ISO-8859-1) differs in the 0x80–0x9F range (C1 controls vs printable
+         chars), so the menu label "Windows-1252" would otherwise silently lie to the user. -->
+    <PackageVersion Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+  </ItemGroup>
+
+  <!-- === CRC-32/ISO-HDLC for the §9.3 append-log frame — Host only (M2.1).
+       BCL System.IO.Hashing.Crc32 is CRC-32/ISO-HDLC (poly 0xEDB88320) with
+       little-endian byte output, so its 4-byte hash drops straight into the LE
+       frame checksum (verified against the 0xCBF43926 "123456789" check value).
+       Preferred over a hand-rolled table per M2.1 instructions. === -->
+  <ItemGroup>
+    <PackageVersion Include="System.IO.Hashing" Version="8.0.0" />
+  </ItemGroup>
+
+  <!-- === Mechanical C-9 boundary enforcement (§2.3) — analyzer scoped to
+       Core/Core.Ai/Core.Checklist via the per-project reference. === -->
+  <ItemGroup>
+    <!-- 3.3.4 targets the Roslyn that ships with the .NET 8 SDK; 4.x needs the
+         .NET 9/10 SDK Roslyn (System.Collections.Immutable 9.0.0) and CS8032s
+         under the pinned 8.0.128 SDK. -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="3.3.4" />
+  </ItemGroup>
+
+  <!-- === DragonScrub (DS-1) — App only. Deterministic, no-LLM prompt-injection
+       scrubbing (replaces the bespoke StripMarker; docs/decisions.md DR-DS-1).
+       DragonScrub is not on nuget.org; it resolves from the local folder feed
+       that NuGet.config declares for it. === -->
+  <ItemGroup>
+    <PackageVersion Include="DragonScrub" Version="0.2.0" />
+  </ItemGroup>
+
+  <!-- === Test stack — versions pinned centrally. === -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
+    <PackageVersion Include="Avalonia.Headless" Version="11.3.6" />
+    <PackageVersion Include="Avalonia.Headless.XUnit" Version="11.3.6" />
+  </ItemGroup>
+
+</Project>

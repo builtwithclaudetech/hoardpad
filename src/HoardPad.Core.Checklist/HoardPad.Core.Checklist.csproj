@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- HoardPad.Core.Checklist — .hoard model + serialization; platform-free
+       (architecture §1.5). References Core only. -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\HoardPad.Core\HoardPad.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Same C-9 boundary enforcement as Core (architecture §2.3). -->
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)..\..\BannedSymbols.Core.txt" />
+  </ItemGroup>
+
+</Project>

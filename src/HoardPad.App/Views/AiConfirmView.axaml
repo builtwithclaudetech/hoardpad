@@ -1,0 +1,78 @@
+<!--
+  AiConfirmView.axaml — the M6.6 inline safety-confirm control (design §6.5/§6.6.1, FR-10).
+
+  ONE control renders all three confirms (approve-each diff / over-cap irreversible / cap-reached) —
+  it is shown as an in-panel overlay (NOT a separate OS window), consistent with the FR-22 in-window
+  rule. The SAFETY-CRITICAL default focus is set in code-behind from the request's DefaultFocus
+  (Deny for approve-each, Stop for cap-reached) so an accidental Enter never authorizes a file op.
+  Wording (the Approve/Allow labels incl. "(will ask again)", "Approve (irreversible)") is bound from
+  the request shapes. Chrome uses the brand.md §13 tokens via DynamicResource.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="240"
+             x:Class="HoardPad.App.Views.AiConfirmView">
+
+  <Border Background="{DynamicResource Brand.SurfaceAlt.Brush}"
+          BorderBrush="{DynamicResource Brand.OverlaySurface.Brush}"
+          BorderThickness="1"
+          CornerRadius="4"
+          Padding="12"
+          MaxWidth="320">
+    <StackPanel Spacing="8">
+
+      <!-- Heading (the cap-reached confirm names the specific cap + count; the approve-each confirm
+           says "AI wants to <verb> <path>"). -->
+      <TextBlock x:Name="HeadingText"
+                 FontWeight="SemiBold"
+                 TextWrapping="Wrap"
+                 Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+
+      <!-- The diff/preview (approve-each only) — monospace so +/- gutters align. -->
+      <Border x:Name="DiffBorder"
+              Background="{DynamicResource Brand.GutterBg.Brush}"
+              CornerRadius="3"
+              Padding="6"
+              IsVisible="False">
+        <TextBlock x:Name="DiffText"
+                   FontFamily="{DynamicResource Brand.Font.Code}"
+                   TextWrapping="NoWrap"
+                   Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+      </Border>
+
+      <!-- Sandbox / undoability line. -->
+      <TextBlock x:Name="SandboxText"
+                 FontSize="11"
+                 TextWrapping="Wrap"
+                 Foreground="{DynamicResource Brand.Muted.Brush}" />
+
+      <!-- The irreversible / runaway warning (shown for the over-cap + cap-reached variants). -->
+      <TextBlock x:Name="WarningText"
+                 FontSize="11"
+                 TextWrapping="Wrap"
+                 IsVisible="False"
+                 Foreground="{DynamicResource Brand.Danger.Brush}" />
+
+      <!-- The no-reply countdown (approve-each only) — makes the fail-closed deadline visible (§6.6.1). -->
+      <TextBlock x:Name="CountdownText"
+                 FontSize="11"
+                 IsVisible="False"
+                 Foreground="{DynamicResource Brand.Warning.Brush}" />
+
+      <!-- The two action buttons. Default focus is set in code-behind from the request (Deny / Stop). -->
+      <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+        <Button x:Name="AffirmativeButton"
+                Click="OnAffirmative"
+                Background="{DynamicResource Brand.SurfaceAlt.Brush}"
+                Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+        <Button x:Name="ConservativeButton"
+                Click="OnConservative"
+                Background="{DynamicResource Brand.Primary.Brush}"
+                Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+      </StackPanel>
+
+    </StackPanel>
+  </Border>
+</UserControl>

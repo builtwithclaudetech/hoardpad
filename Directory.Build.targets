@@ -1,0 +1,18 @@
+<Project>
+
+  <!--
+    R2R-on-publish guard (architecture §2.3, §7.2; NFR-1 / SPIKE-1).
+    A shipping-RID `dotnet publish` without PublishReadyToRun=true is a gate
+    regression, not a tuning choice (SC-1 fails without R2R). This MSBuild-target
+    form fires on every publish, local or CI (PRD §12 / §7.5).
+
+    Scoped BeforeTargets="Publish" so it only fires on publish of a shipping RID
+    (RuntimeIdentifier set) — ordinary `dotnet build` is never affected.
+  -->
+  <Target Name="EnforceReadyToRunOnPublish" BeforeTargets="Publish">
+    <Error
+      Condition="'$(RuntimeIdentifier)' != '' AND '$(PublishReadyToRun)' != 'true'"
+      Text="HoardPad ship guard (architecture §7.2): a publish of RID '$(RuntimeIdentifier)' requires PublishReadyToRun=true. SC-1 fails without R2R (SPIKE-1 §B). Re-run with -p:PublishReadyToRun=true." />
+  </Target>
+
+</Project>

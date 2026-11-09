@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- HoardPad.Core — the domain kernel. NO platform dependency:
+       BCL + System.Text.Json only (architecture §1.2, §2.1 invariant 1).
+       No project references. -->
+
+  <ItemGroup>
+    <!-- NormcasedPath's host-only factory (TD §2.2): HoardPad.Host is the sole RUNTIME producer
+         of a NormcasedPath (IPathResolver impl). HoardPad.Core.Tests is granted access so the M1.1
+         regression test can call FromResolved to verify the guard and round-trip behaviour.
+         The arch-boundary test pins this exact set — no silent widening to Core.Ai/App. -->
+    <InternalsVisibleTo Include="HoardPad.Host" />
+    <InternalsVisibleTo Include="HoardPad.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Mechanical C-9 boundary enforcement (architecture §2.3): DllImport,
+         DateTime.UtcNow/.Now, System.IO.File/.Directory are build errors here. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)..\..\BannedSymbols.Core.txt" />
+  </ItemGroup>
+
+</Project>

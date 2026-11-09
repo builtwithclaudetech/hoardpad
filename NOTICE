@@ -1,0 +1,169 @@
+HoardPad
+Copyright (c) 2026 builtwithclaudetech
+
+This product is licensed under the MIT License (see LICENSE).
+
+This product distributes third-party components in its published binaries.
+Each component is used under its own license, listed below with its version
+and project URL. The list covers every package in the shipped dependency graph
+for both runtime identifiers (linux-x64 and win-x64).
+
+Each release zip includes the full license and notice texts of these
+components in its `licenses/` folder.
+
+Test-only packages (xUnit, NetArchTest.Rules, coverlet, Avalonia.Headless,
+Microsoft.NET.Test.Sdk) and build-time analyzers
+(Microsoft.CodeAnalysis.BannedApiAnalyzers) are used to build and test
+HoardPad. They are not distributed in the published binaries.
+
+Avalonia.BuildServices (MIT, https://avaloniaui.net/) is part of the build
+tooling that Avalonia brings into the restore graph. It runs during the build
+and collects build telemetry unless you opt out (see "Build telemetry" in the
+README). It is not part of the published application.
+
+--------------------------------------------------------------------------
+Avalonia 11.3.6, and its companion packages at the same version:
+Avalonia.Desktop, Avalonia.Themes.Fluent, Avalonia.Skia, Avalonia.X11,
+Avalonia.FreeDesktop, Avalonia.Win32, Avalonia.Native,
+Avalonia.Remote.Protocol
+License: MIT
+Copyright 2013-2025 The AvaloniaUI Project
+https://github.com/AvaloniaUI/Avalonia
+
+--------------------------------------------------------------------------
+Avalonia.Fonts.Inter 11.3.6
+License: MIT (the package). It bundles the Inter typeface, which is
+licensed separately under the SIL Open Font License 1.1.
+https://github.com/AvaloniaUI/Avalonia
+Inter typeface: https://github.com/rsms/inter
+
+--------------------------------------------------------------------------
+Avalonia.AvaloniaEdit 11.4.1, AvaloniaEdit.TextMate 11.4.1
+License: MIT
+Copyright 2017-2026 The AvaloniaUI Project
+https://github.com/AvaloniaUI/AvaloniaEdit
+
+--------------------------------------------------------------------------
+Avalonia.Angle.Windows.Natives 2.1.25547.20250602 (Windows builds)
+License: BSD-3-Clause style (the ANGLE license)
+Copyright 2018 The ANGLE Project Authors. All rights reserved.
+The license forbids using the names of TransGaming Inc., Google Inc., 3DLabs
+Inc. Ltd., or their contributors to endorse derived products without prior
+written permission.
+https://github.com/AvaloniaUI/angle/
+
+--------------------------------------------------------------------------
+SkiaSharp 2.88.9 and SkiaSharp.NativeAssets.* 2.88.9
+License: MIT
+Copyright (c) Microsoft Corporation
+https://github.com/mono/SkiaSharp
+The SkiaSharp native library bundles Skia (BSD-3-Clause, Copyright (c) 2011
+Google Inc.) and other components. The package's THIRD-PARTY-NOTICES.txt
+lists these components, with these licenses:
+  - Skia, libwebp: BSD-3-Clause
+  - ANGLE: BSD-3-Clause style
+  - HarfBuzz: "Old MIT"
+  - expat, imgui, jsoncpp, SPIR-V Headers: MIT-style
+  - libpng: libpng license
+  - zlib, SDL: zlib license
+  - libjpeg-turbo: IJG, BSD-3-Clause, and zlib licenses
+  - FreeType: FreeType License (FTL) or GPL-2.0, dual-licensed
+  - ICU: Unicode / ICU license
+  - etc1, piex, sfntly, SPIR-V Tools: Apache-2.0
+  - gif: MPL-1.1 / GPL-2.0 / LGPL-2.1 (tri-license)
+  - DNG SDK: Adobe DNG SDK license
+  - libmicrohttpd: LGPL-2.1
+This list reproduces the contents of that notices file. It does not claim
+that every listed component is linked into every native binary. The full
+texts are in the `licenses/` folder of each release zip.
+
+--------------------------------------------------------------------------
+HarfBuzzSharp and HarfBuzzSharp.NativeAssets.*, NuGet version 8.3.1 revision 1
+License: MIT
+Copyright (c) Microsoft Corporation
+https://github.com/mono/SkiaSharp
+The native library bundles HarfBuzz, which is licensed under the "Old MIT"
+license (https://github.com/harfbuzz/harfbuzz).
+
+--------------------------------------------------------------------------
+TextMateSharp 2.0.4, TextMateSharp.Grammars 2.0.4
+License: MIT
+https://github.com/danipen/TextMateSharp
+The bundled TextMate grammars originate from Visual Studio Code and from
+the upstream grammar repositories that Visual Studio Code uses. Each grammar
+remains under its own permissive license, as recorded in the
+TextMateSharp.Grammars package.
+
+--------------------------------------------------------------------------
+Onigwrap 1.0.11
+License: MIT
+Copyright (c) 2024 Aikawa Yataro
+https://github.com/aikawayataro/Onigwrap
+Onigwrap wraps the Oniguruma regular-expression library, which is licensed
+under the BSD 2-Clause License.
+https://github.com/kkos/oniguruma
+
+--------------------------------------------------------------------------
+Markdig 0.45.0
+License: BSD 2-Clause
+Copyright (c) Alexandre Mutel
+https://github.com/xoofx/markdig
+
+--------------------------------------------------------------------------
+CommunityToolkit.Mvvm 8.4.2
+License: MIT
+Copyright (c) .NET Foundation and Contributors
+https://github.com/CommunityToolkit/dotnet
+
+--------------------------------------------------------------------------
+Microsoft.Extensions.DependencyInjection 8.0.1
+Microsoft.Extensions.DependencyInjection.Abstractions 8.0.2
+System.IO.Hashing 8.0.0
+System.IO.Pipelines 8.0.0
+System.Memory 4.6.0
+System.Text.Encoding.CodePages 8.0.0
+License: MIT
+Copyright (c) .NET Foundation and Contributors, and Microsoft Corporation
+https://github.com/dotnet/runtime
+(System.Memory 4.6.0: https://github.com/dotnet/maintenance-packages)
+
+--------------------------------------------------------------------------
+MicroCom.Runtime 0.11.0
+License: MIT
+Copyright 2021 Nikita Tsukanov
+https://github.com/kekekeks/MicroCom
+
+--------------------------------------------------------------------------
+Tmds.DBus.Protocol 0.21.2
+License: MIT
+Copyright Tom Deseyn
+https://github.com/tmds/Tmds.DBus
+
+--------------------------------------------------------------------------
+UTF.Unknown 2.6.0
+License: Mozilla Public License 1.1 (MPL-1.1)
+https://github.com/CharsetDetector/UTF-unknown
+HoardPad uses UTF.Unknown unmodified, as a NuGet package dependency. The
+MPL-1.1 applies to UTF.Unknown's own source files. The complete,
+unmodified source is available at the URL above.
+
+--------------------------------------------------------------------------
+.NET 8 runtime (included in self-contained builds)
+License: MIT
+Copyright (c) .NET Foundation and Contributors
+https://github.com/dotnet/runtime
+The runtime ships with its own third-party notices:
+https://github.com/dotnet/runtime/blob/main/THIRD-PARTY-NOTICES.TXT
+
+--------------------------------------------------------------------------
+DragonScrub 0.2.0
+License: MIT
+https://github.com/builtwithclaudetech/dragonscrub
+A deterministic prompt-injection scrubbing library. The 0.2.0 NuGet package
+is vendored in this repository's packages/ folder because it is not
+published on nuget.org.
+It was built from the DragonScrub 0.2.0 sources published as the initial
+public release of the DragonScrub repository (commit 0ded65b). The hash
+embedded in the DLL's version string refers to the pre-publication history of
+the same release. Anyone can rebuild an equivalent package from that commit
+with `dotnet pack`.

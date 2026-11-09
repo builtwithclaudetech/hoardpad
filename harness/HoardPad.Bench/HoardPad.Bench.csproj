@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- HoardPad.Bench — external SC-1/SC-2/NFR-5 launcher + named-pipe echo
+       channel (architecture §1.6). Measures a *published* App via process-launch
+       — deliberately NO ProjectReference to App (preserves the SPIKE-1
+       external-observer design). -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

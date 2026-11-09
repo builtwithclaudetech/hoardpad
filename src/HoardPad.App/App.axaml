@@ -1,0 +1,26 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="HoardPad.App.App"
+             RequestedThemeVariant="Dark">
+
+  <!-- Dark is the default theme variant (brand.md §0); the brand §13 role tokens are merged
+       below as theme-keyed resources so a switch to Light restyles chrome in lockstep (FR-37). -->
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://HoardPad.App/Theme/BrandTheme.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+
+  <Application.Styles>
+    <FluentTheme />
+    <!-- QA2-1/QA2-2: AvaloniaEdit's TextEditor ControlTheme is NOT bundled with FluentTheme — without this
+         include the control has no template applied at all (no TextArea, no focus adorner), so it renders
+         as an empty box and Focusable stays false. This is the root cause of the "dead tab, no editable
+         surface" defect (root-caused via a headless diagnostic: Focus() returned false, IsFocused stayed
+         false, even after a layout pass). -->
+    <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
+  </Application.Styles>
+
+</Application>

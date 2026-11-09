@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  # Avalonia.BuildServices (in the restore graph) sends build telemetry unless this
+  # variable is present; the variable's presence alone opts out.
+  AVALONIA_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  # 1. PII gate: no personal information or private-project references may
+  #    ever appear in this public repo.
+  pii-gate:
+    name: PII gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - name: PII gate (generic shapes only)
+        run: |
+          set -euo pipefail
+
+          # Patterns are assembled from split literals so this workflow file
+          # never contains the contiguous string it is itself scanning for.
+          gmail_re='[A-Za-z0-9._%+-]+@gmail''\.com'
+          home_re='/home''/[A-Za-z0-9_.-]+'
+          srv_re='/sr''v/'
+
+          gmail_hits=$(git ls-files -z \
+            | xargs -0 grep -nIE "$gmail_re" 2>/dev/null \
+            | grep -vE 'user@example\.com|your-email@example\.com' || true)
+
+          home_hits=$(git ls-files -z \
+            | xargs -0 grep -nIE "$home_re" 2>/dev/null \
+            | grep -vE '/home/(you|runner|user)\b' || true)
+
+          srv_hits=$(git ls-files -z \
+            | xargs -0 grep -nIE "$srv_re" 2>/dev/null || true)
+
+          all_hits=$(printf '%s\n%s\n%s\n' "$gmail_hits" "$home_hits" "$srv_hits" | sed '/^\s*$/d')
+
+          if [ -n "$all_hits" ]; then
+            echo "$all_hits"
+            echo "FAIL: PII detected above."
+            exit 1
+          fi
+          echo "PII gate clean"
+
+  # 2. Linux: full solution restore, build and test. The App tests run on
+  #    Avalonia.Headless (Skia), so no X server is needed. python3 (preinstalled on
+  #    ubuntu-latest) runs the bundled hook in the Host and AcceptanceHarness tests.
+  #    The real `claude` CLI is not on PATH here; the tests that would use it are
+  #    opt-in or return early without it.
+  # global.json pins sdk 8.0.0 with rollForward latestMinor. setup-dotnet's
+  # global-json-file input would try to install that literal version (it does not
+  # exist: the first 8.0 SDK is 8.0.100), so the SDK is requested as 8.0.x and
+  # global.json still governs which installed 8.x SDK the build uses.
+  linux:
+    name: Linux (build + test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: actions/setup-dotnet@v4.1.0
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore HoardPad.sln
+
+      - name: Build
+        run: dotnet build HoardPad.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test HoardPad.sln -c Release --no-build
+
+  # 3. Windows: self-contained win-x64 publish (proves the Windows binary builds)
+  #    plus the test projects known to be OS-portable.
+  #
+  #    Linux-only for now, so NOT run here: HoardPad.Core.Ai.Tests (the file-ops
+  #    service joins paths with Path.Combine while its tests assert "/"-separated
+  #    paths, which would see "\" on Windows), and HoardPad.Host.Tests,
+  #    HoardPad.App.Tests and HoardPad.AcceptanceHarness (AF_UNIX sockets, python3
+  #    and /bin/sh stand-in scripts; the win-x64 runtime legs have never been run).
+  windows:
+    name: Windows (publish + portable tests)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: actions/setup-dotnet@v4.1.0
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore HoardPad.sln
+
+      - name: Test (Core)
+        run: dotnet test tests/HoardPad.Core.Tests/HoardPad.Core.Tests.csproj -c Release --no-restore
+
+      - name: Test (Core.Checklist)
+        run: dotnet test tests/HoardPad.Core.Checklist.Tests/HoardPad.Core.Checklist.Tests.csproj -c Release --no-restore
+
+      # Never `dotnet build -r win-x64` here: it fails with NETSDK1150, because the
+      # self-test stand-in exe the app references is not self-contained. Publishing
+      # the app project is the supported path. A RID publish also requires
+      # PublishReadyToRun=true (guard in Directory.Build.targets).
+      - name: Publish win-x64 (self-contained, ReadyToRun)
+        run: >
+          dotnet publish src/HoardPad.App/HoardPad.App.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishReadyToRun=true
+          -o out/win-x64

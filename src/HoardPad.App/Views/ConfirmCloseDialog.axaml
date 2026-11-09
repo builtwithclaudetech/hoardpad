@@ -1,0 +1,38 @@
+<!--
+  ConfirmCloseDialog.axaml — the BUG-3 unsaved-changes confirmation dialog.
+
+  A real modal Window shown via ShowDialog(owner): "filename has unsaved changes.
+  Close anyway?" with Close anyway / Cancel. Cancel takes initial focus so an
+  accidental Enter never discards changes.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="HoardPad.App.Views.ConfirmCloseDialog"
+        Width="420" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource Brand.Surface.Brush}"
+        FontFamily="{DynamicResource Brand.Font.Ui}"
+        FontSize="{DynamicResource Brand.Font.UiSize}"
+        Title="Unsaved Changes">
+
+  <StackPanel Margin="16" Spacing="14">
+
+    <TextBlock x:Name="PromptText"
+               TextWrapping="Wrap"
+               Foreground="{DynamicResource Brand.OnSurface.Brush}"
+               Text="This document has unsaved changes." />
+
+    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+      <Button x:Name="CloseButton"
+              Content="Close anyway"
+              Click="OnClose" />
+      <Button x:Name="CancelButton"
+              Content="Cancel"
+              IsCancel="True"
+              Click="OnCancel" />
+    </StackPanel>
+
+  </StackPanel>
+</Window>

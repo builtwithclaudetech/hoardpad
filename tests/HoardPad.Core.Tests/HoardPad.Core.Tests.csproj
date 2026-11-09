@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- HoardPad.Core.Tests — domain unit tests + the NetArchTest arch fixture
+       (architecture §1.6, §2.3). -->
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\HoardPad.Core\HoardPad.Core.csproj" />
+    <!-- TEST-ONLY refs (architecture §1.6, §2.1 — test projects are legitimate
+         additional consumers outside the shipped graph). Required so the
+         ArchitectureBoundaryTests fixture can load HoardPad.Core.Ai and
+         HoardPad.Core.Checklist from the test output dir to assert they do not
+         reference each other (§2.1 invariant 3). NOT a product-project edge. -->
+    <ProjectReference Include="..\..\src\HoardPad.Core.Ai\HoardPad.Core.Ai.csproj" />
+    <ProjectReference Include="..\..\src\HoardPad.Core.Checklist\HoardPad.Core.Checklist.csproj" />
+    <!-- MF2.1 — Stopwatch-confinement guard: copies HoardPad.Host and HoardPad.App into
+         the test output dir so ArchitectureBoundaryTests can load them via Assembly.Load
+         (NetArchTest reads IL via Mono.Cecil — no Avalonia runtime is started).
+         NOT a product-project edge. -->
+    <ProjectReference Include="..\..\src\HoardPad.Host\HoardPad.Host.csproj" />
+    <ProjectReference Include="..\..\src\HoardPad.App\HoardPad.App.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="NetArchTest.Rules" />
+  </ItemGroup>
+
+</Project>

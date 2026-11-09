@@ -1,0 +1,137 @@
+<!--
+  BrandTheme.axaml — the brand.md §13 semantic role tokens as Avalonia theme resources.
+
+  Dark is the default theme; Light is the alternate (brand.md §0). Both are bound here via
+  ThemeDictionaries so a theme switch restyles chrome in lockstep (FR-37). Every value is the
+  brand.md §1 binding verbatim — DO NOT hand-edit hex here; the contract lives in brand.md and
+  scripts/check_contrast.py gates it (42/42 WCAG AA). UI uses DynamicResource against these
+  brushes so the live theme switch propagates without rebuild.
+
+  Token naming: Brand.{Role}.Color (the raw Color) + Brand.{Role}.Brush (the SolidColorBrush
+  the UI binds). The 14 §13 roles + the §1.2 gutter-bg supporting token.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="using:System">
+
+  <ResourceDictionary.ThemeDictionaries>
+
+    <!-- ===== Dark (default) — brand.md §1 / §1.1 / §1.2 ===== -->
+    <ResourceDictionary x:Key="Dark">
+      <Color x:Key="Brand.Surface.Color">#16131f</Color>
+      <Color x:Key="Brand.SurfaceAlt.Color">#211d2e</Color>
+      <Color x:Key="Brand.OverlaySurface.Color">#6b6180</Color>
+      <Color x:Key="Brand.OnSurface.Color">#f2effa</Color>
+      <Color x:Key="Brand.Muted.Color">#948fa6</Color>
+      <Color x:Key="Brand.Gutter.Color">#948fa6</Color>
+      <Color x:Key="Brand.GutterBg.Color">#1b1828</Color>
+      <Color x:Key="Brand.Selection.Color">#3a3358</Color>
+      <Color x:Key="Brand.Primary.Color">#b79ad6</Color>
+      <Color x:Key="Brand.Accent.Color">#6ea8da</Color>
+      <Color x:Key="Brand.Success.Color">#45c98a</Color>
+      <Color x:Key="Brand.Danger.Color">#ff6b63</Color>
+      <Color x:Key="Brand.Warning.Color">#f6b73e</Color>
+      <Color x:Key="Brand.FocusRing.Color">#6ea8da</Color>
+
+      <!-- ===== Markdown rendered-preview roles (brand.md §4, the FR-15/FR-16 preview stylesheet).
+           Only the roles whose value is NOT already a §13 token live here; body/links/list-markers/
+           code-inline-fg/quote-text reuse on-surface/accent/muted/on-surface above. ===== -->
+      <Color x:Key="Brand.Md.Heading.Color">#b79ad6</Color>        <!-- h1–h3 amethyst (= primary) -->
+      <Color x:Key="Brand.Md.HeadingMinor.Color">#6ea8da</Color>   <!-- h4–h6 sapphire (= accent) -->
+      <Color x:Key="Brand.Md.Rule.Color">#f6b73e</Color>          <!-- hr gold-fire -->
+      <Color x:Key="Brand.Md.CodeTint.Color">#211d2e</Color>      <!-- inline-code bg = surface-alt tint -->
+      <Color x:Key="Brand.Md.CodeBlock.Color">#1b1828</Color>     <!-- fenced code-block bg = gutter-bg -->
+      <Color x:Key="Brand.Md.QuoteBar.Color">#5cc0cf</Color>      <!-- blockquote teal bar -->
+    </ResourceDictionary>
+
+    <!-- ===== Light (alternate) — brand.md §1 / §1.1 / §1.2 ===== -->
+    <ResourceDictionary x:Key="Light">
+      <Color x:Key="Brand.Surface.Color">#fbfaf7</Color>
+      <Color x:Key="Brand.SurfaceAlt.Color">#fffefb</Color>
+      <Color x:Key="Brand.OverlaySurface.Color">#9888af</Color>
+      <Color x:Key="Brand.OnSurface.Color">#1b1a22</Color>
+      <Color x:Key="Brand.Muted.Color">#6e6a78</Color>
+      <Color x:Key="Brand.Gutter.Color">#6e6a78</Color>
+      <Color x:Key="Brand.GutterBg.Color">#f4f2ef</Color>
+      <Color x:Key="Brand.Selection.Color">#d8d0ea</Color>
+      <Color x:Key="Brand.Primary.Color">#5a3f78</Color>
+      <Color x:Key="Brand.Accent.Color">#2f5d8f</Color>
+      <Color x:Key="Brand.Success.Color">#14794a</Color>
+      <Color x:Key="Brand.Danger.Color">#c23934</Color>
+      <Color x:Key="Brand.Warning.Color">#9a5a00</Color>
+      <Color x:Key="Brand.FocusRing.Color">#2f5d8f</Color>
+
+      <!-- ===== Markdown rendered-preview roles (brand.md §4) — light variant. ===== -->
+      <Color x:Key="Brand.Md.Heading.Color">#5a3f78</Color>        <!-- h1–h3 amethyst (= primary) -->
+      <Color x:Key="Brand.Md.HeadingMinor.Color">#2f5d8f</Color>   <!-- h4–h6 sapphire (= accent) -->
+      <Color x:Key="Brand.Md.Rule.Color">#8a5610</Color>          <!-- hr gold-ink (AA on light) -->
+      <Color x:Key="Brand.Md.CodeTint.Color">#f4f2ef</Color>      <!-- inline-code bg = surface-soft tint -->
+      <Color x:Key="Brand.Md.CodeBlock.Color">#f4f2ef</Color>     <!-- fenced code-block bg -->
+      <Color x:Key="Brand.Md.QuoteBar.Color">#2f7d8c</Color>      <!-- blockquote teal bar -->
+    </ResourceDictionary>
+
+  </ResourceDictionary.ThemeDictionaries>
+
+  <!-- ===== Editor code font (brand.md §5) =====
+       The brand code/editor face is JetBrains Mono, but its OFL .ttf/.otf is NOT yet bundled in the
+       repo (no font files under assets/) — see the M6.2 build report R4. Until the font is added and
+       embedded as an avares:// resource, the editor uses brand.md §5's cross-platform monospace
+       fallback stack MINUS the unbundled JetBrains Mono, so the buffer resolves to a real monospace
+       face on a clean win-x64 (Consolas) AND linux-x64 (DejaVu Sans Mono) install. Centralized here as
+       a single resource so the real bundled font drops in by editing only this one value. -->
+  <!-- MIRROR of HoardPadSettings.DefaultCodeFontFallback — keep in sync. -->
+  <FontFamily x:Key="Brand.Font.Code">Cascadia Mono,Consolas,DejaVu Sans Mono,monospace</FontFamily>
+
+  <!-- FEAT-1: UI font family (brand.md §5 Inter chain). MIRROR of HoardPadSettings.DefaultUiFontFallback — keep in sync. -->
+  <FontFamily x:Key="Brand.Font.Ui">Inter, system-ui, Segoe UI, Roboto, Noto Sans, sans-serif</FontFamily>
+
+  <!-- FEAT-1: default editor + UI font sizes, updated at runtime when font settings change.
+       MIRROR of HoardPadSettings.DefaultEditorFontSize / DefaultUiFontSize + Min/Max — keep in sync. -->
+  <sys:Double x:Key="Brand.Font.CodeSize">13</sys:Double>
+  <sys:Double x:Key="Brand.Font.UiSize">12</sys:Double>
+
+  <!-- QA4-18: Settings-tab group-header font size — 1.25x Brand.Font.UiSize (SettingsFontApplier.
+       SectionHeaderScale), updated at runtime alongside it. Compiled default here matches the pre-fix
+       hardcoded TextBlock.section FontSize="15" (12 * 1.25 = 15) so a DynamicResource lookup never
+       misses before the first Apply runs. -->
+  <sys:Double x:Key="Brand.Font.UiSizeSection">15</sys:Double>
+
+  <!-- FEAT-15: AI panel style — input / assistant-response / user-message font families + sizes, updated
+       at runtime (AiPanelStyleApplier) when the Settings ▸ AI section changes. Compiled defaults here so a
+       DynamicResource lookup never misses before the first Apply runs. MIRROR of HoardPadSettings.
+       DefaultUiFontFallback / DefaultAiFontSize + Min/MaxUiFontSize — keep in sync. -->
+  <FontFamily x:Key="Brand.Font.AiInput">Inter, system-ui, Segoe UI, Roboto, Noto Sans, sans-serif</FontFamily>
+  <FontFamily x:Key="Brand.Font.AiResponse">Inter, system-ui, Segoe UI, Roboto, Noto Sans, sans-serif</FontFamily>
+  <FontFamily x:Key="Brand.Font.AiUser">Inter, system-ui, Segoe UI, Roboto, Noto Sans, sans-serif</FontFamily>
+  <sys:Double x:Key="Brand.Font.AiInputSize">12</sys:Double>
+  <sys:Double x:Key="Brand.Font.AiResponseSize">12</sys:Double>
+  <sys:Double x:Key="Brand.Font.AiUserSize">12</sys:Double>
+
+  <!-- The brushes the UI binds. Each resolves its Color from the active ThemeDictionary above,
+       so a theme switch flows through to every chrome surface (FR-37). -->
+  <SolidColorBrush x:Key="Brand.Surface.Brush" Color="{DynamicResource Brand.Surface.Color}" />
+  <SolidColorBrush x:Key="Brand.SurfaceAlt.Brush" Color="{DynamicResource Brand.SurfaceAlt.Color}" />
+  <SolidColorBrush x:Key="Brand.OverlaySurface.Brush" Color="{DynamicResource Brand.OverlaySurface.Color}" />
+  <SolidColorBrush x:Key="Brand.OnSurface.Brush" Color="{DynamicResource Brand.OnSurface.Color}" />
+  <SolidColorBrush x:Key="Brand.Muted.Brush" Color="{DynamicResource Brand.Muted.Color}" />
+  <SolidColorBrush x:Key="Brand.Gutter.Brush" Color="{DynamicResource Brand.Gutter.Color}" />
+  <SolidColorBrush x:Key="Brand.GutterBg.Brush" Color="{DynamicResource Brand.GutterBg.Color}" />
+  <SolidColorBrush x:Key="Brand.Selection.Brush" Color="{DynamicResource Brand.Selection.Color}" />
+  <SolidColorBrush x:Key="Brand.Primary.Brush" Color="{DynamicResource Brand.Primary.Color}" />
+  <SolidColorBrush x:Key="Brand.Accent.Brush" Color="{DynamicResource Brand.Accent.Color}" />
+  <SolidColorBrush x:Key="Brand.Success.Brush" Color="{DynamicResource Brand.Success.Color}" />
+  <SolidColorBrush x:Key="Brand.Danger.Brush" Color="{DynamicResource Brand.Danger.Color}" />
+  <SolidColorBrush x:Key="Brand.Warning.Brush" Color="{DynamicResource Brand.Warning.Color}" />
+  <SolidColorBrush x:Key="Brand.FocusRing.Brush" Color="{DynamicResource Brand.FocusRing.Color}" />
+
+  <!-- Markdown rendered-preview brushes (brand.md §4). The preview binds these via DynamicResource so it
+       switches dark↔light in lockstep with the chrome (FR-37). The body/links/list-marker/quote-text
+       roles reuse the §13 brushes above (Brand.OnSurface / Brand.Accent / Brand.Muted) per brand.md §4. -->
+  <SolidColorBrush x:Key="Brand.Md.Heading.Brush" Color="{DynamicResource Brand.Md.Heading.Color}" />
+  <SolidColorBrush x:Key="Brand.Md.HeadingMinor.Brush" Color="{DynamicResource Brand.Md.HeadingMinor.Color}" />
+  <SolidColorBrush x:Key="Brand.Md.Rule.Brush" Color="{DynamicResource Brand.Md.Rule.Color}" />
+  <SolidColorBrush x:Key="Brand.Md.CodeTint.Brush" Color="{DynamicResource Brand.Md.CodeTint.Color}" />
+  <SolidColorBrush x:Key="Brand.Md.CodeBlock.Brush" Color="{DynamicResource Brand.Md.CodeBlock.Color}" />
+  <SolidColorBrush x:Key="Brand.Md.QuoteBar.Brush" Color="{DynamicResource Brand.Md.QuoteBar.Color}" />
+
+</ResourceDictionary>

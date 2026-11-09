@@ -1,0 +1,443 @@
+<!--
+  SettingsView.axaml — the M6.8 settings surface (FR-35/FR-36, design §7), hosted as a TAB (ODQ-12 —
+  settings-as-tab, NOT a separate OS window). A scrollable form bound to SettingsViewModel: the FR-35
+  field set grouped per design §7 (AI / Editor / Appearance / Safety / Files & save). The four AI caps
+  use NumericUpDown bound to the VM int setters, where the Core.Ai FR-35 clamp (CapClamp) gates each
+  change — a rejected value snaps back and the validation message shows. No code-behind logic; the VM
+  owns load/save/clamp.
+
+  QA2-9/QA2-10: explicit Save is the intended persistence model (SettingsStore.SettingsChanged already
+  fires only on an explicit save, and AiPanelViewModel's live model/effort push in CompositionRoot
+  depends on that discrete event — switching to live per-keystroke persistence would fire it on every
+  edit). The bug was discoverability, not the save path: the Save button lived at the bottom of the
+  scrollable form and was clipped under the footer bar. Fixed by pinning a save bar (Save button +
+  save-confirmation message) OUTSIDE the ScrollViewer, in its own Auto row, so it is always visible
+  regardless of scroll position or window height.
+
+  QA4-5: the Name/Value columns used a StackPanel-per-row layout with a hardcoded 200px label Width, so
+  a larger UI font clipped setting names (the divider never moved). Rows are now Grid.row (Auto,Auto
+  columns); the label column carries a shared SharedSizeGroup ("SettingsLabelColumn") scoped by
+  Grid.IsSharedSizeScope on the outer form StackPanel, so every row's label column auto-sizes to the
+  widest font-scaled label across the WHOLE form (one continuous divider, matching the pre-fix visual),
+  and re-measures live as the UI font size changes (TextBlock.FontSize is AffectsMeasure).
+
+  QA4-18: TextBlock.section hardcoded FontSize="15" — group headers stayed a fixed size regardless of
+  the UI font setting. Now bound to Brand.Font.UiSizeSection (DynamicResource), the single derived
+  resource SettingsFontApplier writes alongside Brand.Font.UiSize (a fixed 1.25x scale off the same
+  clamped UI font size), so headers grow/shrink with the chrome font like every other UI-font-scaled
+  surface in the app.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:HoardPad.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="600"
+             x:Class="HoardPad.App.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel"
+             Background="{DynamicResource Brand.Surface.Brush}">
+
+  <UserControl.Styles>
+    <Style Selector="TextBlock.section">
+      <Setter Property="Foreground" Value="{DynamicResource Brand.Primary.Brush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="FontSize" Value="{DynamicResource Brand.Font.UiSizeSection}" />
+      <Setter Property="Margin" Value="0,16,0,6" />
+    </Style>
+    <Style Selector="TextBlock.label">
+      <Setter Property="Foreground" Value="{DynamicResource Brand.OnSurface.Brush}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Margin" Value="0,0,12,0" />
+    </Style>
+    <Style Selector="Grid.row">
+      <Setter Property="Margin" Value="0,4,0,4" />
+    </Style>
+  </UserControl.Styles>
+
+  <!-- QA2-10: the outer Grid bounds the scrollable form to the space ABOVE the pinned save bar (row 1),
+       so form content can never extend under it, and the save bar itself is never occluded by the
+       window's own footer (Region 6 in MainWindow.axaml) because it is now part of this control's own
+       layout, not the last item in a scroll list. -->
+  <Grid RowDefinitions="*,Auto" Background="{DynamicResource Brand.Surface.Brush}">
+
+  <ScrollViewer Grid.Row="0" Padding="24" Background="{DynamicResource Brand.Surface.Brush}">
+    <!-- QA4-5: IsSharedSizeScope roots the SettingsLabelColumn group for every Grid.row below, so the
+         whole form shares one divider position. No MaxWidth here (the pre-fix "560" was never a
+         deliberate reading-line-length cap — design.md §7 documents none — it was just an accident of
+         the old fixed-200px label width totaling ~560 at the default font; capping it would force the
+         Auto-sized label/value columns to compress/overlap at a larger UI font, reintroducing QA4-5's
+         truncation symptom under a new name). -->
+    <StackPanel HorizontalAlignment="Left" Grid.IsSharedSizeScope="True">
+
+      <TextBlock Text="Settings"
+                 Foreground="{DynamicResource Brand.OnSurface.Brush}"
+                 FontSize="22" FontWeight="Bold" />
+
+      <!-- ===== AI (design §7.2) ===== -->
+      <TextBlock Classes="section" Text="AI" />
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Active backend" />
+        <ComboBox Grid.Column="1" MinWidth="200" SelectedItem="{Binding ActiveBackend}"
+                  ItemsSource="{Binding BackendOptions}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Agency mode" />
+        <ComboBox Grid.Column="1" MinWidth="200" SelectedItem="{Binding AgencyMode}"
+                  ItemsSource="{Binding AgencyOptions}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="AI panel hotkey" />
+        <TextBox Grid.Column="1" MinWidth="200" Text="{Binding AiPanelHotkey}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="claude -p CLI path" />
+        <TextBox Grid.Column="1" MinWidth="300" Watermark="resolve via shim order"
+                 Text="{Binding ClaudeCliPath}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Anthropic API key" />
+        <TextBox Grid.Column="1" MinWidth="300" PasswordChar="•" Text="{Binding AnthropicApiKey}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Anthropic model" />
+        <TextBox Grid.Column="1" MinWidth="200" Watermark="backend default" Text="{Binding AnthropicModel}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Local LLM endpoint" />
+        <TextBox Grid.Column="1" MinWidth="300" Watermark="http://localhost:11434" Text="{Binding LocalEndpoint}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Local LLM model" />
+        <TextBox Grid.Column="1" MinWidth="200" Watermark="backend default" Text="{Binding LocalModel}" />
+      </Grid>
+
+      <!-- ===== BUG-5: model + effort (AI section) ===== -->
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Model" />
+        <StackPanel Grid.Column="1" Orientation="Vertical" Spacing="4">
+          <ComboBox MinWidth="200" SelectedItem="{Binding SelectedModelOption}"
+                    ItemsSource="{Binding ModelOptions}" />
+          <TextBox MinWidth="200" Watermark="Enter custom model ID…"
+                   Text="{Binding CustomModelId}"
+                   IsVisible="{Binding IsCustomModel}" />
+        </StackPanel>
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Effort" />
+        <ComboBox Grid.Column="1" MinWidth="200" SelectedItem="{Binding EffortLevel}"
+                  ItemsSource="{Binding EffortOptions}" />
+      </Grid>
+
+      <!-- ===== Editor (design §7.3) ===== -->
+      <TextBlock Classes="section" Text="Editor" />
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Default new-doc language" />
+        <ComboBox Grid.Column="1" MinWidth="200" SelectedItem="{Binding DefaultLanguage}"
+                  ItemsSource="{Binding LanguageOptions}" />
+      </Grid>
+
+      <!-- ===== Font (FEAT-1) ===== -->
+      <TextBlock Classes="section" Text="Font" />
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Editor code font" />
+        <ComboBox Grid.Column="1" MinWidth="200" SelectedItem="{Binding EditorFontFamily}"
+                  ItemsSource="{Binding EditorFontOptions}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Editor font size" />
+        <NumericUpDown Grid.Column="1" MinWidth="160" Minimum="8" Maximum="36" Increment="1"
+                       Value="{Binding EditorFontSize}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="UI chrome font" />
+        <ComboBox Grid.Column="1" MinWidth="200" SelectedItem="{Binding UiFontFamily}"
+                  ItemsSource="{Binding UiFontOptions}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="UI font size" />
+        <NumericUpDown Grid.Column="1" MinWidth="160" Minimum="8" Maximum="24" Increment="1"
+                       Value="{Binding UiFontSize}" />
+      </Grid>
+
+      <!-- ===== AI panel (FEAT-15) ===== -->
+      <TextBlock Classes="section" Text="AI panel" />
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Input font" />
+        <ComboBox Grid.Column="1" MinWidth="200" SelectedItem="{Binding AiInputFontFamily}"
+                  ItemsSource="{Binding UiFontOptions}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Input font size" />
+        <NumericUpDown Grid.Column="1" MinWidth="160" Minimum="8" Maximum="24" Increment="1"
+                       Value="{Binding AiInputFontSize}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Response font" />
+        <ComboBox Grid.Column="1" MinWidth="200" SelectedItem="{Binding AiResponseFontFamily}"
+                  ItemsSource="{Binding UiFontOptions}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Response font size" />
+        <NumericUpDown Grid.Column="1" MinWidth="160" Minimum="8" Maximum="24" Increment="1"
+                       Value="{Binding AiResponseFontSize}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Response text color" />
+        <TextBox Grid.Column="1" MinWidth="160" Watermark="on-surface (default)" Text="{Binding AiResponseColor}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Your-message font" />
+        <ComboBox Grid.Column="1" MinWidth="200" SelectedItem="{Binding AiUserFontFamily}"
+                  ItemsSource="{Binding UiFontOptions}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Your-message font size" />
+        <NumericUpDown Grid.Column="1" MinWidth="160" Minimum="8" Maximum="24" Increment="1"
+                       Value="{Binding AiUserFontSize}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Your-message text color" />
+        <TextBox Grid.Column="1" MinWidth="160" Watermark="on-surface (default)" Text="{Binding AiUserColor}" />
+      </Grid>
+
+      <!-- ===== Appearance (design §7.4) ===== -->
+      <TextBlock Classes="section" Text="Appearance" />
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Theme" />
+        <ComboBox Grid.Column="1" MinWidth="200" SelectedItem="{Binding Theme}" ItemsSource="{Binding ThemeOptions}" />
+      </Grid>
+
+      <!-- ===== Files &amp; save (design §7.5) ===== -->
+      <TextBlock Classes="section" Text="Files &amp; save" />
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Auto-save interval (s)" />
+        <NumericUpDown Grid.Column="1" MinWidth="160" Minimum="1" Maximum="30" Increment="1"
+                       Value="{Binding AutoSaveSeconds}" />
+      </Grid>
+
+      <!-- ===== AI safety tunables (design §7.5, FR-35) ===== -->
+      <TextBlock Classes="section" Text="AI safety" />
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Confirm each AI edit in large/home folders" />
+        <CheckBox Grid.Column="1" IsChecked="{Binding ConfirmLargeHomeFolder}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Large-root threshold (files)" />
+        <NumericUpDown Grid.Column="1" MinWidth="160" Minimum="1" Increment="100"
+                       Value="{Binding LargeRootThreshold}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Create cap (per turn)" />
+        <NumericUpDown Grid.Column="1" MinWidth="160" Minimum="1" Increment="1" Value="{Binding CreateCap}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Destructive cap (per turn)" />
+        <NumericUpDown Grid.Column="1" MinWidth="160" Minimum="1" Increment="1" Value="{Binding DestructiveCap}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Files-touched cap (per turn)" />
+        <NumericUpDown Grid.Column="1" MinWidth="160" Minimum="1" Increment="1" Value="{Binding FilesTouchedCap}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="Destructive magnitude (%)" />
+        <NumericUpDown Grid.Column="1" MinWidth="160" Minimum="1" Maximum="100" Increment="5"
+                       Value="{Binding DestructiveMagnitudePercent}" />
+      </Grid>
+
+      <Grid Classes="row">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" SharedSizeGroup="SettingsLabelColumn" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Classes="label" Grid.Column="0" Text="No-reply timeout (s)" />
+        <NumericUpDown Grid.Column="1" MinWidth="160" Minimum="1" Increment="5" Value="{Binding NoReplySeconds}" />
+      </Grid>
+
+      <!-- FR-35: rejected caps surface a clear message; the safe value is retained. -->
+      <TextBlock Text="{Binding CapValidationMessage}"
+                 Foreground="{DynamicResource Brand.Danger.Brush}"
+                 TextWrapping="Wrap" Margin="0,8,0,0"
+                 IsVisible="{Binding CapValidationMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+    </StackPanel>
+  </ScrollViewer>
+
+  <!-- QA2-9/QA2-10: pinned save bar — always visible, never clipped by scroll position or the window
+       footer. SaveStatusMessage confirms the persist happened ("Settings saved.") so the explicit-save
+       model is legible without a hidden/ambiguous outcome. -->
+  <Border Grid.Row="1"
+          Background="{DynamicResource Brand.SurfaceAlt.Brush}"
+          BorderBrush="{DynamicResource Brand.OverlaySurface.Brush}"
+          BorderThickness="0,1,0,0"
+          Padding="24,12">
+    <StackPanel Orientation="Horizontal" Spacing="16">
+      <Button Content="Save"
+              Command="{Binding SaveCommand}"
+              Padding="20,8"
+              Background="{DynamicResource Brand.Primary.Brush}"
+              Foreground="{DynamicResource Brand.Surface.Brush}" />
+
+      <TextBlock Text="{Binding SaveStatusMessage}"
+                 Foreground="{DynamicResource Brand.Muted.Brush}"
+                 VerticalAlignment="Center"
+                 IsVisible="{Binding SaveStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+    </StackPanel>
+  </Border>
+
+  </Grid>
+
+</UserControl>

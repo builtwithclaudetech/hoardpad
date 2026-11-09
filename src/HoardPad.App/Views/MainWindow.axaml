@@ -1,0 +1,590 @@
+<!--
+  MainWindow.axaml — the M6.1 main Window shell (design §2.1 / §2.2).
+
+  The six stacked regions, top to bottom:
+    1. Title bar      — the OS-native title bar (design §2.1; v1 uses native chrome). The
+                        window Title + Icon are set in code-behind from the shell VM / brand asset.
+    2. Menu bar       — File Edit Search View Language AI Checklist Settings Help (design §2.1).
+    3. Toolbar        — compact high-frequency actions (design §2.1; collapsible via View ▸ Toolbar).
+    4. Tab strip      — one tab per open document (FR-1) + a "+" new-buffer affordance.
+    5. Content row    — folder-tree pane | editor area | AI panel overlay (design §2.1).
+    6. Status bar     — language / encoding / EOL / cursor / theme segments (FR-6 / FR-37).
+
+  WIRED SCAFFOLDING ONLY (M6.1): the menus/toolbar/tabs/content/status regions exist and bind to
+  the shell VM, but carry placeholder content — the editor, checklist, AI panel, and find/replace
+  surfaces layer on in M6.2+. Chrome uses the brand.md §13 tokens via DynamicResource.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:HoardPad.App.ViewModels"
+        xmlns:views="using:HoardPad.App.Views"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+        x:Class="HoardPad.App.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        x:Name="Root"
+        Width="900" Height="600"
+        Background="{DynamicResource Brand.Surface.Brush}"
+        FontFamily="{DynamicResource Brand.Font.Ui}"
+        FontSize="{DynamicResource Brand.Font.UiSize}"
+        Title="{Binding Title}">
+
+  <!-- Window-level keybindings (M6.7): Ctrl+F / Ctrl+H summon the find/replace panel (design §3.5 / §8).
+       MenuItem.InputGesture only shows the hint text — the actual accelerator is registered here. -->
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Ctrl+F" Command="{Binding ShowFindCommand}" />
+    <KeyBinding Gesture="Ctrl+H" Command="{Binding ShowReplaceCommand}" />
+    <!-- FR-15: Ctrl+Shift+V toggles the Markdown source↔preview (design §4 / §8). The command is on the
+         active editor VM and is disabled (CanExecute false) for a non-Markdown document. -->
+    <KeyBinding Gesture="Ctrl+Shift+V" Command="{Binding ToggleMarkdownPreviewCommand}" />
+    <!-- M8.1 (scope-gap-fill): Ctrl+Tab / Ctrl+Shift+Tab cycle through open tabs — the keyboard-only
+         cut-tail fallback (design §2.2 / §8.3). Next from last wraps to first; prev from first wraps to last. -->
+    <KeyBinding Gesture="Ctrl+Tab" Command="{Binding ActivateNextTabCommand}" />
+    <KeyBinding Gesture="Ctrl+Shift+Tab" Command="{Binding ActivatePreviousTabCommand}" />
+    <!-- BUG-3: Ctrl+W closes the active tab. -->
+    <KeyBinding Gesture="Ctrl+W" Command="{Binding CloseActiveTabCommand}" />
+    <!-- QA4-20: Ctrl+F4 is the conventional close-active-document accelerator alongside Ctrl+W; it routes
+         through the SAME CloseActiveTabCommand, which already prompts to save first via ConfirmCloseTab
+         (BUG-3) when the active tab has unsaved changes. -->
+    <KeyBinding Gesture="Ctrl+F4" Command="{Binding CloseActiveTabCommand}" />
+    <!-- QA3-5: Ctrl+Z (Undo) as a real Window-level accelerator — the Edit menu's InputGesture="Ctrl+Z"
+         (MainWindow.axaml below) is display-only, same as every other binding in this block, so without
+         this the shortcut was a dead key whenever focus was outside the editor's TextArea (e.g. right
+         after a Find/Replace panel action). When the editor DOES have focus, AvaloniaEdit's own TextArea
+         input handler consumes Ctrl+Z first and marks the event Handled, so this Window-level binding never
+         re-fires and there is no double-undo (verified live + FindReplaceUndoTests.EditorFocusedCtrlZUndoesExactlyOneEditNotTwo). -->
+    <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}" />
+    <!-- FEAT-5: Ctrl+R (Redo), the same Window-level-accelerator split QA3-5 established for Ctrl+Z above —
+         this fires when focus is OFF the editor's TextArea. When the editor DOES have focus, EditorView wires
+         its OWN TextArea-level Ctrl+R -> _editor.Redo() (WireRedoRebindKeyBindings), which pre-empts this
+         binding the same way AvaloniaEdit's TextArea input handler pre-empts Ctrl+Z above — no double-redo.
+         Redo was previously Ctrl+Y (AvaloniaEdit's built-in default gesture, wired via its own RoutedCommand
+         mechanism, never through this Window.KeyBindings collection or our RedoCommand). FEAT-5 rebinds the
+         accelerator to Ctrl+R and disarms the old Ctrl+Y gesture at the TextArea level (see EditorView.axaml.cs)
+         so Ctrl+Y no longer redoes anywhere. -->
+    <KeyBinding Gesture="Ctrl+R" Command="{Binding RedoCommand}" />
+    <!-- FEAT-3: File ▸ New / Open… / Save as real Window-level accelerators. Before this, Ctrl+N/O/S had
+         no binding anywhere (not even editor-native) — they simply did nothing regardless of focus. These
+         three shell-level commands (NewDocumentCommand/OpenDocumentCommand/SaveDocumentCommand) always
+         CanExecute, so the bindings are unconditionally live. -->
+    <KeyBinding Gesture="Ctrl+N" Command="{Binding NewDocumentCommand}" />
+    <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenDocumentCommand}" />
+    <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveDocumentCommand}" />
+    <!-- FEAT-3: Cut/Copy/Paste already showed InputGesture="Ctrl+X/C/V" on the Edit menu items below, but
+         (unlike Undo/Redo) had no Window-level binding at all — only AvaloniaEdit's own built-in TextArea
+         handling fired them, and only while the editor's TextArea itself had focus. Same split as the
+         QA3-5 Ctrl+Z entry above: this fires when focus is OFF the editor; when the editor DOES have focus,
+         AvaloniaEdit's native TextArea handler consumes the gesture first (Handled), so there is no
+         double-cut/copy/paste.
+         QA4-14/W1: bind to the WindowLevel* wrappers, not the plain CutCommand/CopyCommand/PasteCommand the
+         Edit menu still uses — CanExecute additionally checks IsNonEditorTextInputFocused, so the ancestor
+         walk (KeyboardDevice.ProcessRawEvent) that reaches this far up the tree becomes a no-op while a
+         plain TextBox elsewhere in the shell (Find/Replace, checklist rename/add-item, Settings, …) has
+         focus, letting that control's own native Cut/Copy/Paste fire instead (see MainWindowViewModel's
+         WindowLevelCutCommand doc comment). -->
+    <KeyBinding Gesture="Ctrl+X" Command="{Binding WindowLevelCutCommand}" />
+    <KeyBinding Gesture="Ctrl+C" Command="{Binding WindowLevelCopyCommand}" />
+    <KeyBinding Gesture="Ctrl+V" Command="{Binding WindowLevelPasteCommand}" />
+  </Window.KeyBindings>
+
+  <!-- Region 1 (title bar) is the OS-native chrome; regions 2–6 stack inside the window. -->
+  <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+
+    <!-- ===== Region 2: Menu bar (design §2.1 §8.1) ===== -->
+    <Menu Grid.Row="0"
+          Background="{DynamicResource Brand.SurfaceAlt.Brush}"
+          Foreground="{DynamicResource Brand.OnSurface.Brush}">
+      <MenuItem Header="_File">
+        <MenuItem Header="_New" Command="{Binding NewDocumentCommand}" InputGesture="Ctrl+N" />
+        <MenuItem Header="New _Checklist" Command="{Binding NewChecklistCommand}" />
+        <MenuItem Header="_Open…" Command="{Binding OpenDocumentCommand}" InputGesture="Ctrl+O" />
+        <MenuItem Header="Open _Folder…" Command="{Binding OpenFolderCommand}" />
+        <MenuItem Header="_Save" Command="{Binding SaveDocumentCommand}" InputGesture="Ctrl+S" />
+        <!-- FEAT-2: Save As… for the active document tab of ANY kind — a text tab opens the OS Save
+             dialog defaulting to its current/language extension (never hardcoded "txt") and relocates
+             without deleting the old file; a `.hoard` tab routes to the QA3-7 additive relocate (auto-save
+             stays the default durability path there too). Disabled (CanExecute false) with no document tab
+             active (e.g. the settings tab, or no tabs open). -->
+        <MenuItem Header="Save _As…" Command="{Binding SaveAsCommand}" />
+        <Separator />
+        <MenuItem Header="_Close" Command="{Binding CloseActiveTabCommand}" InputGesture="Ctrl+W" />
+        <MenuItem Header="E_xit" Command="{Binding ExitApplicationCommand}" />
+      </MenuItem>
+      <MenuItem Header="_Edit">
+        <MenuItem Header="_Undo" Command="{Binding UndoCommand}" InputGesture="Ctrl+Z" />
+        <!-- FEAT-5: Redo rebound Ctrl+Y -> Ctrl+R (see the Window.KeyBindings comment above + EditorView.axaml.cs). -->
+        <MenuItem Header="_Redo" Command="{Binding RedoCommand}" InputGesture="Ctrl+R" />
+        <Separator />
+        <MenuItem Header="Cu_t" Command="{Binding CutCommand}" InputGesture="Ctrl+X" />
+        <MenuItem Header="_Copy" Command="{Binding CopyCommand}" InputGesture="Ctrl+C" />
+        <MenuItem Header="_Paste" Command="{Binding PasteCommand}" InputGesture="Ctrl+V" />
+        <Separator />
+        <MenuItem Header="_Find…" Command="{Binding ShowFindCommand}" InputGesture="Ctrl+F" />
+        <MenuItem Header="Find and _Replace…" Command="{Binding ShowReplaceCommand}" InputGesture="Ctrl+H" />
+      </MenuItem>
+      <MenuItem Header="_Search">
+        <MenuItem Header="_Find…" Command="{Binding ShowFindCommand}" InputGesture="Ctrl+F" />
+        <MenuItem Header="_Replace…" Command="{Binding ShowReplaceCommand}" InputGesture="Ctrl+H" />
+      </MenuItem>
+      <MenuItem Header="_View">
+        <MenuItem Header="_Toolbar" Command="{Binding ToggleToolbarCommand}" />
+        <MenuItem Header="_Folder Tree" Command="{Binding ToggleFolderTreeCommand}" />
+        <Separator />
+        <!-- FR-37 (M7.1): the dark↔light lockstep theme switch. One synchronous Switch re-themes the
+             editor + preview + chrome together; the choice persists via settings.json (M6.8). -->
+        <MenuItem Header="Toggle _Theme (Dark/Light)" Command="{Binding ToggleThemeCommand}" />
+        <Separator />
+        <!-- FR-15: the source↔preview toggle. Enabled only for a Markdown document (the command's
+             CanExecute is the editor VM's IsMarkdown); absent/disabled otherwise (FR-15 Done-when). -->
+        <MenuItem Header="Toggle Markdown _Preview"
+                  Command="{Binding ToggleMarkdownPreviewCommand}"
+                  InputGesture="Ctrl+Shift+V" />
+        <!-- FEAT-6: display-only word wrap for the active tab (per-tab scope — see EditorViewModel's
+             IsWordWrapEnabled doc comment). IsChecked is Mode=OneWay: the Command does the actual toggle,
+             same pattern as the Language-menu checkmarks' no-op ConverterBack (LanguageMenuConverters.cs) —
+             a MenuItem's own click-driven IsChecked write-back must never double-toggle the flag. -->
+        <MenuItem Header="_Word Wrap"
+                  Command="{Binding ToggleWordWrapCommand}"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding IsWordWrapEnabled, Mode=OneWay}" />
+      </MenuItem>
+      <!-- QA2-13: lists the FR-7 manually-selectable languages (LanguageCatalog.AvailableLanguages,
+           "Plain Text" first) plus the 20-language set; each sets the active document's grammar via
+           SetLanguageCommand (BUG-9-style forwarding from the active editor VM). QA3-4: each item is
+           ToggleType="CheckBox" with IsChecked bound through LanguageActiveConverter (ConverterParameter
+           = the item's own label) so the active document's language shows a checkmark (design §3). -->
+      <MenuItem Header="_Language">
+        <MenuItem Header="Plain Text" Command="{Binding SetLanguageCommand}" CommandParameter="Plain Text"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter='Plain Text'}" />
+        <Separator />
+        <MenuItem Header="Markdown" Command="{Binding SetLanguageCommand}" CommandParameter="Markdown"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter=Markdown}" />
+        <MenuItem Header="HTML" Command="{Binding SetLanguageCommand}" CommandParameter="HTML"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter=HTML}" />
+        <MenuItem Header="JavaScript" Command="{Binding SetLanguageCommand}" CommandParameter="JavaScript"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter=JavaScript}" />
+        <MenuItem Header="CSS" Command="{Binding SetLanguageCommand}" CommandParameter="CSS"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter=CSS}" />
+        <MenuItem Header="Python" Command="{Binding SetLanguageCommand}" CommandParameter="Python"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter=Python}" />
+        <MenuItem Header="C#" Command="{Binding SetLanguageCommand}" CommandParameter="C#"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter='C#'}" />
+        <MenuItem Header="XML" Command="{Binding SetLanguageCommand}" CommandParameter="XML"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter=XML}" />
+        <MenuItem Header="JSON" Command="{Binding SetLanguageCommand}" CommandParameter="JSON"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter=JSON}" />
+        <MenuItem Header="SQL" Command="{Binding SetLanguageCommand}" CommandParameter="SQL"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter=SQL}" />
+        <MenuItem Header="Rust" Command="{Binding SetLanguageCommand}" CommandParameter="Rust"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter=Rust}" />
+        <MenuItem Header="TypeScript" Command="{Binding SetLanguageCommand}" CommandParameter="TypeScript"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter=TypeScript}" />
+        <MenuItem Header="YAML" Command="{Binding SetLanguageCommand}" CommandParameter="YAML"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter=YAML}" />
+        <MenuItem Header="TOML" Command="{Binding SetLanguageCommand}" CommandParameter="TOML"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter=TOML}" />
+        <MenuItem Header="Shell/Bash" Command="{Binding SetLanguageCommand}" CommandParameter="Shell/Bash"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter='Shell/Bash'}" />
+        <MenuItem Header="PowerShell" Command="{Binding SetLanguageCommand}" CommandParameter="PowerShell"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter=PowerShell}" />
+        <MenuItem Header="Dockerfile" Command="{Binding SetLanguageCommand}" CommandParameter="Dockerfile"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter=Dockerfile}" />
+        <MenuItem Header="C" Command="{Binding SetLanguageCommand}" CommandParameter="C"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter=C}" />
+        <MenuItem Header="C++" Command="{Binding SetLanguageCommand}" CommandParameter="C++"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter='C++'}" />
+        <MenuItem Header="Java" Command="{Binding SetLanguageCommand}" CommandParameter="Java"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter=Java}" />
+        <MenuItem Header="Go" Command="{Binding SetLanguageCommand}" CommandParameter="Go"
+                  ToggleType="CheckBox"
+                  IsChecked="{Binding LanguageMode, Converter={x:Static views:LanguageActiveConverter.Instance}, ConverterParameter=Go}" />
+      </MenuItem>
+      <MenuItem Header="_AI">
+        <MenuItem Header="_Toggle AI Panel" Command="{Binding ToggleAiPanelCommand}" />
+        <!-- FEAT-9: empties the visible transcript for a fresh conversation. Does NOT reset the cap-state
+             (AiPanelViewModel.ClearConversation — a UI-level history clear only, spine no-re-arm invariant). -->
+        <MenuItem Header="_Clear Conversation" Command="{Binding AiPanel.ClearConversationCommand}" />
+      </MenuItem>
+      <MenuItem Header="_Checklist">
+        <MenuItem Header="_Indent item"
+                  Command="{Binding ChecklistIndentCommand}"
+                  InputGesture="Alt+Shift+Right" />
+        <MenuItem Header="_Outdent item"
+                  Command="{Binding ChecklistOutdentCommand}"
+                  InputGesture="Alt+Shift+Left" />
+        <Separator />
+        <MenuItem Header="Move item _up"
+                  Command="{Binding ChecklistMoveUpCommand}"
+                  InputGesture="Alt+Up" />
+        <MenuItem Header="Move item _down"
+                  Command="{Binding ChecklistMoveDownCommand}"
+                  InputGesture="Alt+Down" />
+        <Separator />
+        <!-- QA3-7 (Option B): the same Save-As command as File ▸ Save As…, surfaced here too for
+             discoverability while the checklist menu is focused. -->
+        <MenuItem Header="Save _As…" Command="{Binding SaveAsChecklistCommand}" />
+      </MenuItem>
+      <MenuItem Header="_Settings">
+        <MenuItem Header="_Preferences…" Command="{Binding OpenSettingsCommand}" />
+      </MenuItem>
+      <!-- QA2-14: About HoardPad — app info + keyboard-shortcut reference, shown via a modal dialog
+           (Views/AboutDialog.axaml) wired from MainWindow.axaml.cs like the BUG-3 close-confirm prompt. -->
+      <MenuItem Header="_Help">
+        <MenuItem Header="_About HoardPad…" Command="{Binding ShowHelpCommand}" />
+      </MenuItem>
+    </Menu>
+
+    <!-- ===== Region 3: Toolbar (design §2.1 — compact, collapsible) ===== -->
+    <Border Grid.Row="1"
+            IsVisible="{Binding IsToolbarVisible}"
+            Background="{DynamicResource Brand.SurfaceAlt.Brush}"
+            Padding="6,3"
+            BorderBrush="{DynamicResource Brand.OverlaySurface.Brush}"
+            BorderThickness="0,0,0,1">
+      <StackPanel Orientation="Horizontal" Spacing="4">
+        <Button Content="New" Command="{Binding NewDocumentCommand}" ToolTip.Tip="New text buffer" />
+        <Button Content="Checklist" Command="{Binding NewChecklistCommand}" ToolTip.Tip="New .hoard checklist" />
+        <Button Content="Open" Command="{Binding OpenDocumentCommand}" />
+        <Button Content="Save" Command="{Binding SaveDocumentCommand}" />
+        <Separator />
+        <Button Content="Find" Command="{Binding ShowFindCommand}" />
+        <Separator />
+        <!-- FR-15: the [MD Preview] toolbar toggle — shown ONLY for a Markdown document (IsMarkdown), and
+             disabled otherwise via the command's CanExecute (design §4.1 / FR-15 Done-when). -->
+        <Button Content="MD Preview"
+                IsVisible="{Binding IsMarkdown, FallbackValue=False}"
+                Command="{Binding ToggleMarkdownPreviewCommand}" />
+        <Separator />
+        <!-- STF-5: opens the OS folder picker and sets the AI's document folder root (WorkspaceService.OpenFolderPickerAsync
+             → OpenFolderAsync), distinct from the tree-toggle button below which only shows/hides the pane. -->
+        <Button Content="Open Folder…" Command="{Binding OpenFolderCommand}" ToolTip.Tip="Open a folder as the AI's document folder" />
+        <Button Content="Folder" Command="{Binding ToggleFolderTreeCommand}" />
+        <Button Content="AI ▸" Command="{Binding ToggleAiPanelCommand}" />
+      </StackPanel>
+    </Border>
+
+    <!-- ===== Region 4: Tab strip (FR-1) ===== -->
+    <!-- M8.1 (cut-tail #1): one tab per open document, bound to the shell's Tabs collection. A tap activates
+         a tab; a pointer-drag reorders it (the bound ObservableCollection.Move — MainWindowViewModel.MoveTab),
+         reusing the ChecklistView drag pattern (PointerPressed → DragDrop.DoDragDrop → Drop → collection Move
+         with a same-slot no-op guard). Keyboard tab-switch (M6.1) is the cut-tail fallback and is unaffected. -->
+    <Border Grid.Row="2"
+            Background="{DynamicResource Brand.SurfaceAlt.Brush}"
+            Padding="6,2"
+            BorderBrush="{DynamicResource Brand.OverlaySurface.Brush}"
+            BorderThickness="0,0,0,1">
+      <StackPanel Orientation="Horizontal" Spacing="4">
+        <!-- DragDrop.AllowDrop="True" is REQUIRED: Avalonia raises DragOver/Drop only on elements that
+             explicitly opt in (mirrors ChecklistView.axaml row Grid which also has AllowDrop="True"). -->
+        <ItemsControl x:Name="TabStrip" ItemsSource="{Binding Tabs}"
+                      DragDrop.AllowDrop="True">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="4" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <!-- The tab chip. Tag = the bound DocumentTab so the code-behind handlers resolve it.
+                   Background: Brand.Primary accent when this tab is active (IsActive set by ActivateTab),
+                   Transparent otherwise (a real, non-null brush either way — the whole chip stays
+                   hit-testable). PointerPressed is on the WHOLE chip (QA2-7: a 6px-wide drag-handle sliver
+                   was undiscoverable for a real click-and-drag, silently regressing M8.1) — OnTabPointerPressed
+                   itself ignores presses that originate from the × Button (or its descendants) so the close
+                   command still fires correctly. QA3-14 / QA3-3: OnTabPointerPressed only RECORDS a drag/
+                   activation candidate; it no longer starts DragDrop.DoDragDrop itself, and (QA3-14 REOPENED)
+                   activation is no longer wired through Tapped at all — see MainWindow.axaml.cs's tab-strip
+                   file-header comment for why Avalonia's built-in Tapped gesture is structurally unreliable
+                   here on a real window manager (it requires PointerPressed's and PointerReleased's raw
+                   hit-test source to be the IDENTICAL descendant visual, which fragments across the
+                   TextBlock's glyph-ink hit region vs. this Border's own background). The Window-level
+                   OnWindowPointerMoved/OnWindowPointerReleased handlers own both drag-promotion and
+                   activation now, keyed on the physical pointer, not on which descendant was hit. -->
+              <Border CornerRadius="3" Padding="8,2"
+                      Background="{Binding IsActive,
+                          Converter={x:Static views:TabIsActiveConverter.Instance}}"
+                      Tag="{Binding}"
+                      Cursor="Hand"
+                      PointerPressed="OnTabPointerPressed"
+                      ToolTip.Tip="Click to switch — drag to reorder">
+                <!-- FEAT-7: tab-strip right-click context menu — Close (reuses BUG-3's CloseTabCommand),
+                     Save / Save As… (reuse FEAT-2's activate-first pattern, MainWindowViewModel.SaveTab /
+                     SaveAsTab), and three clipboard copy items. Tag="{Binding}" + Click handlers
+                     (code-behind) mirrors ChecklistView's per-row context menu (ChecklistView.axaml) rather
+                     than Command/$parent[...] compiled-binding traversal — a ContextMenu is a Popup, not a
+                     descendant of this Border in the visual tree once open, so relative-source traversal up
+                     to the ItemsControl (as the × close Button above does) is not reliably reachable from
+                     inside it. -->
+                <Border.ContextMenu>
+                  <ContextMenu>
+                    <MenuItem Header="Close" Tag="{Binding}" Click="OnTabContextCloseClick" />
+                    <MenuItem Header="Save" Tag="{Binding}" Click="OnTabContextSaveClick" />
+                    <MenuItem Header="Save As…" Tag="{Binding}" Click="OnTabContextSaveAsClick" />
+                    <Separator />
+                    <MenuItem Header="Copy Filename" Tag="{Binding}" Click="OnTabContextCopyFilenameClick" />
+                    <MenuItem Header="Copy File Path" Tag="{Binding}" Click="OnTabContextCopyFilePathClick" />
+                    <MenuItem Header="Copy Folder Path" Tag="{Binding}" Click="OnTabContextCopyFolderPathClick" />
+                  </ContextMenu>
+                </Border.ContextMenu>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="{Binding DisplayName}"
+                             Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+                  <!-- Sub-fix 1: $parent[ItemsControl] traversal resolves CloseTabCommand in compiled-binding
+                       mode without needing x:DataType on the DataTemplate (ItemsControl.DataContext is the
+                       shell VM; the cast syntax works there). -->
+                  <Button Content="×"
+                          FontSize="11"
+                          Width="16" Height="16"
+                          Padding="0"
+                          Background="Transparent"
+                          Foreground="{DynamicResource Brand.Muted.Brush}"
+                          Command="{Binding $parent[ItemsControl].((vm:MainWindowViewModel)DataContext).CloseTabCommand}"
+                          CommandParameter="{Binding}" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <!-- QA2-15: the "+" tab-strip affordance previously had no Command at all, so a normal click
+             did nothing; the popup the maintainer saw "when clicked just right" was the default Button
+             right-click/press-and-hold visual, not a wired menu. A MenuFlyout (same pattern as the
+             status-bar encoding "reinterpret" button above) gives it a real click-to-open menu wired
+             to the SAME NewDocumentCommand / NewChecklistCommand the toolbar and File menu already use. -->
+        <Button Content="+" ToolTip.Tip="New document or checklist">
+          <Button.Flyout>
+            <MenuFlyout Placement="Top">
+              <MenuItem Header="New Document" Command="{Binding NewDocumentCommand}" />
+              <MenuItem Header="New Checklist" Command="{Binding NewChecklistCommand}" />
+            </MenuFlyout>
+          </Button.Flyout>
+        </Button>
+      </StackPanel>
+    </Border>
+
+    <!-- ===== Region 5: Main content row — folder tree | editor | AI panel (design §2.1) ===== -->
+    <!-- QA4-13 (fix-first — hostile-review CRITICAL): column 0 (folder tree) stays "Auto", NOT a fixed
+         pixel width. An Auto column measures its (only) child's desired size, so it collapses to 0 exactly
+         like the AI-panel-splitter's own Auto column (index 3) already does when IsAiPanelVisible is
+         false — with NO folder open (IsFolderTreeVisible defaults false, the app's most common startup
+         state), this column reserves ZERO space and the editor starts flush at the window's left edge.
+         The Border below carries the explicit Width="200" instead (empirically verified: Avalonia's
+         GridSplitter converts an Auto column to a concrete Pixel GridLength on drag, using the column's
+         current ActualWidth as the starting point — the SAME mechanism WPF's GridSplitter uses — so the
+         splitter at column 1 can still resize it once the folder tree is visible and the column's
+         ActualWidth is 200 from the Border's explicit Width). The AI panel's OWN column 4 used to stay a
+         fixed "300" — its equivalent "always reserved when hidden" quirk pre-dated this change (Run
+         3/M6.6) and was explicitly OUT OF SCOPE for QA4-13. QA5-B2 closes it: column 4 is now "Auto" too,
+         same mechanism — see the comment on views:AiPanelView below for why it carries NO MinWidth (unlike
+         this folder Border) and the code-behind that additionally remembers a dragged width across a
+         hide/show cycle. -->
+    <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+
+      <!-- Folder-tree pane (QA3-2, design §9.5): hidden until a folder is opened. TreeView bound to
+           FolderTreeRoots — at most one row, labeled with the open folder's own leaf name (QA4-6 — was the
+           literal "(root)"; WorkspaceService sets IsFolderTreeVisible once populated). Immediate children
+           (files + subdirectories) are populated
+           eagerly when the folder opens/restores; deeper nesting is LAZY-loaded per row on expand
+           (FolderTreeNode.IsExpanded, off the UI thread — NFR-1). Double-tap a FILE row to open it in a
+           new tab (OpenFolderTreeItemCommand); a directory row only expands/collapses. MinWidth="200" here
+           (not on the column, QA4-13) is what gives the "Auto" column 0 a concrete starting size to collapse
+           from/expand to — collapses to 0 when this Border's IsVisible flips false, same as before.
+           F-TREE1: this used to be a fixed Width="200", which — because an explicit Width always wins over
+           a Layoutable's default HorizontalAlignment="Stretch" during Arrange — pinned the Border (and the
+           TreeView filling it, itself default-Stretch with no override anywhere in this project's styles)
+           to exactly 200px forever. QA4-13's own GridSplitter drag converts column 0 from Auto to a wider
+           Pixel GridLength, but the fixed-Width Border never grew past 200px to follow it, leaving a dead
+           unfilled gap between the tree and the splitter whenever the panel was dragged wider ("does not
+           expand to fill the available space"). MinWidth keeps the identical ≥200px floor for the initial
+           Auto-column measure while leaving Stretch free to fill however wide the column becomes.
+           QA5-B2: column 4 (the AI panel, below) now follows this SAME "Auto" pattern — see the comment
+           on views:AiPanelView for what that closes and why it additionally needed code-behind help
+           (MainWindow.axaml.cs's SyncAiPanelColumnWidth) to survive a hide/show cycle after a drag, which
+           this folder column deliberately does not attempt (see ResetFolderColumnWidth's doc comment). -->
+      <Border Grid.Column="0"
+              MinWidth="200"
+              IsVisible="{Binding IsFolderTreeVisible}"
+              Background="{DynamicResource Brand.SurfaceAlt.Brush}"
+              BorderBrush="{DynamicResource Brand.OverlaySurface.Brush}"
+              BorderThickness="0,0,1,0">
+        <TreeView x:Name="FolderTree"
+                  ItemsSource="{Binding FolderTreeRoots}"
+                  Background="Transparent"
+                  Padding="4">
+          <TreeView.Styles>
+            <!-- Binds the generated TreeViewItem container's expand state back to the row VM so
+                 FolderTreeNode.IsExpanded fires the lazy off-thread child load (NFR-1). x:DataType here
+                 is the TreeViewItem's own DataContext (a FolderTreeNode row), NOT the Window's
+                 vm:MainWindowViewModel — a Style Setter binding otherwise resolves against the inherited
+                 Window x:DataType under compiled bindings (AVLN2000). -->
+            <Style Selector="TreeViewItem" x:DataType="vm:FolderTreeNode">
+              <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+            </Style>
+          </TreeView.Styles>
+          <TreeView.ItemTemplate>
+            <TreeDataTemplate ItemsSource="{Binding Children}">
+              <Border Tag="{Binding}"
+                      DoubleTapped="OnFolderTreeNodeDoubleTapped"
+                      Background="Transparent">
+                <TextBlock Text="{Binding Name}"
+                           Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+              </Border>
+            </TreeDataTemplate>
+          </TreeView.ItemTemplate>
+        </TreeView>
+      </Border>
+
+      <!-- QA4-13: draggable splitter between the folder panel and the editor content column (same pattern
+           as the QA2-8 AI/editor splitter below). Only shown/hit-testable while the folder tree itself is
+           visible, so it never intercepts input when there is no open folder. -->
+      <GridSplitter Grid.Column="1"
+                    x:Name="FolderPanelSplitter"
+                    IsVisible="{Binding IsFolderTreeVisible}"
+                    Width="4"
+                    ResizeDirection="Columns"
+                    Background="{DynamicResource Brand.OverlaySurface.Brush}" />
+
+      <!-- Editor column (M6.7): the docked Find/Replace panel stacks ABOVE the editor/checklist/settings
+           surfaces (design §3.5 — in-editor, not a modal; keeps matched text visible). Row 0 is the panel
+           (collapsed until summoned); row 1 holds the three visibility-toggled document surfaces. -->
+      <Grid Grid.Column="2" RowDefinitions="Auto,*">
+
+        <!-- Find/Replace panel (FR-17 / FR-18, M6.7). Ctrl+F / Ctrl+H summon it; Esc closes. Custom panel
+             — supersedes the stock AvaloniaEdit SearchPanel (design §3.5 forbids it). DataContext is the
+             shell's FindReplace VM (the composition root attaches it). -->
+        <views:FindReplaceView Grid.Row="0"
+                               x:Name="FindReplacePanel"
+                               DataContext="{Binding FindReplace}"
+                               IsVisible="{Binding #Root.((vm:MainWindowViewModel)DataContext).FindReplace.IsVisible, FallbackValue=False}" />
+
+        <!-- Editor area. M6.2: the live AvaloniaEdit editor surface (design §3), DataContext-bound to the
+             shell's EditorViewModel. M6.3 (carry-forward A): shown only when a TEXT document is active; a
+             .hoard document shows the ChecklistView instead (the two share the content column). -->
+        <views:EditorView Grid.Row="1"
+                          x:Name="EditorSurface"
+                          IsVisible="{Binding #Root.((vm:MainWindowViewModel)DataContext).IsEditorActive}"
+                          DataContext="{Binding Editor}" />
+
+        <!-- Checklist area. M6.3 (carry-forward A): the custom .hoard checklist control, shown only when a
+             .hoard document is active. DataContext is the active checklist VM; on attach the ChecklistView
+             sets the shell's ActiveChecklist so the top _Checklist menu enables/routes. -->
+        <views:ChecklistView Grid.Row="1"
+                             x:Name="ChecklistSurface"
+                             IsVisible="{Binding #Root.((vm:MainWindowViewModel)DataContext).IsChecklistActive}"
+                             DataContext="{Binding ActiveChecklist}" />
+
+        <!-- Settings area. M6.8 (ODQ-12 — settings-as-tab): the settings form, shown only when the settings
+             tab is active. DataContext is the active SettingsViewModel; it shares the content column with the
+             editor + checklist (exactly one of the three is visible at a time). -->
+        <views:SettingsView Grid.Row="1"
+                            x:Name="SettingsSurface"
+                            IsVisible="{Binding #Root.((vm:MainWindowViewModel)DataContext).IsSettingsActive}"
+                            DataContext="{Binding ActiveSettings}" />
+      </Grid>
+
+      <!-- QA2-8: draggable splitter between the editor and the AI panel column. Only shown/hit-testable
+           while the AI panel itself is visible, so it never intercepts input over a bare editor. -->
+      <GridSplitter Grid.Column="3"
+                    x:Name="AiPanelSplitter"
+                    IsVisible="{Binding #Root.((vm:MainWindowViewModel)DataContext).IsAiPanelVisible}"
+                    Width="4"
+                    ResizeDirection="Columns"
+                    Background="{DynamicResource Brand.OverlaySurface.Brush}" />
+
+      <!-- AI panel overlay (summonable, right — the FR-22 in-window overlay, M6.6). It is a UserControl
+           hosted in this Grid column (NEVER a separate OS window); it floats over the editor's right
+           portion when visible. DataContext is the shell's AiPanel VM (the composition root binds it).
+           QA5-B2: column 4 above is now "Auto" (was a fixed "300"), the F-TREE1 pattern — it collapses to
+           0 exactly like column 0 already does when this control's IsVisible flips false. UNLIKE column
+           0/the folder Border, this control carries NO MinWidth: a MinWidth floor doesn't help here, since
+           this panel's real content (transcript, cap meters, tabs, prompt box, …) naturally desires
+           roughly 550px on its own (measured empirically) — a bare "Auto" column would settle there, not
+           at the intended 300px default, and a floor can't cap a child that already wants more.
+           MainWindow.axaml.cs's SyncAiPanelColumnWidth (called once on DataContext attach, then on every
+           IsAiPanelVisible transition) always assigns an explicit Pixel width when shown instead of
+           leaving the column Auto, which is what actually produces the 300px default — see its own doc
+           comment. It also closes the actual QA5-B2 bug: a completed GridSplitter drag converts the
+           column from Auto to a concrete Pixel GridLength (same mechanism FolderPanelResizeTests.cs
+           already proves for column 0), which would otherwise leave that dragged width PERMANENTLY
+           reserved even while hidden. SyncAiPanelColumnWidth is the extra step ResetFolderColumnWidth
+           deliberately skips: it remembers that dragged Pixel width before resetting the column to Auto
+           on hide, then restores it verbatim on show — so re-showing the panel returns the user's last
+           chosen width, not the 300 default. -->
+      <views:AiPanelView Grid.Column="4"
+                         x:Name="AiPanel"
+                         IsVisible="{Binding #Root.((vm:MainWindowViewModel)DataContext).IsAiPanelVisible}"
+                         DataContext="{Binding AiPanel}" />
+    </Grid>
+
+    <!-- ===== Region 6: Status bar (FR-6 / FR-37) ===== -->
+    <Border Grid.Row="4"
+            Background="{DynamicResource Brand.SurfaceAlt.Brush}"
+            BorderBrush="{DynamicResource Brand.OverlaySurface.Brush}"
+            BorderThickness="0,1,0,0"
+            Padding="8,2">
+      <StackPanel Orientation="Horizontal" Spacing="10">
+        <TextBlock Text="{Binding LanguageMode}" Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+
+        <!-- Encoding segment (FR-6) with the MANUAL reinterpret menu (design §3.4 / ODQ-5). Clicking
+             re-decodes the on-disk bytes under a chosen encoding. Auto-detect is the deferred M8.3.
+             QA2-11: a top-level Menu's implicit Fluent style forces a tall MenuItem (sized for an app
+             menu bar), inflating this Auto-height status-bar row far beyond its content. A Button +
+             MenuFlyout gives the same click-to-open reinterpret list at the compact height of the
+             surrounding status-bar segments. -->
+        <Button Padding="0"
+                Background="Transparent"
+                BorderThickness="0"
+                VerticalAlignment="Center"
+                VerticalContentAlignment="Center"
+                Content="{Binding EncodingLabel}"
+                Foreground="{DynamicResource Brand.OnSurface.Brush}">
+          <Button.Flyout>
+            <MenuFlyout Placement="Top">
+              <MenuItem Header="Reinterpret as UTF-8"
+                        Command="{Binding ReinterpretCommand}" CommandParameter="utf-8" />
+              <MenuItem Header="Reinterpret as UTF-16 LE"
+                        Command="{Binding ReinterpretCommand}" CommandParameter="utf-16le" />
+              <MenuItem Header="Reinterpret as UTF-16 BE"
+                        Command="{Binding ReinterpretCommand}" CommandParameter="utf-16be" />
+              <MenuItem Header="Reinterpret as Windows-1252"
+                        Command="{Binding ReinterpretCommand}" CommandParameter="windows-1252" />
+              <MenuItem Header="Reinterpret as US-ASCII"
+                        Command="{Binding ReinterpretCommand}" CommandParameter="us-ascii" />
+            </MenuFlyout>
+          </Button.Flyout>
+        </Button>
+
+        <TextBlock Text="{Binding LineEndingLabel}" Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+        <TextBlock Text="{Binding CursorLabel}" Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+
+        <!-- Save/dirty segment (FR-5, design §2.2 / §5.4) — closes the M6.1 review note that the dirty
+             marker was title-only. "● Unsaved" when dirty, "✓ Saved" otherwise. -->
+        <TextBlock Text="{Binding DirtyStatusLabel}" Foreground="{DynamicResource Brand.Muted.Brush}" />
+
+        <!-- FR-37 (M7.1): the theme segment reflects the active theme ("☾ Dark" / "☀ Light"). -->
+        <TextBlock Text="{Binding ThemeStatusLabel}" Foreground="{DynamicResource Brand.Muted.Brush}" />
+      </StackPanel>
+    </Border>
+
+  </Grid>
+</Window>

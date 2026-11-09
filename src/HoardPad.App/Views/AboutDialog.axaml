@@ -1,0 +1,67 @@
+<!--
+  AboutDialog.axaml — the Help ▸ About HoardPad dialog (QA2-14).
+
+  A real modal Window shown via ShowDialog(owner), matching ConfirmCloseDialog/DeleteParentDialog:
+  app name + one-line description, then the keyboard-shortcut reference (design §2.1's menu-bar
+  gestures, transcribed from MainWindow.axaml's InputGesture/KeyBinding entries) so Help has real,
+  useful content rather than an empty stub.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="HoardPad.App.Views.AboutDialog"
+        Width="420" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource Brand.Surface.Brush}"
+        FontFamily="{DynamicResource Brand.Font.Ui}"
+        FontSize="{DynamicResource Brand.Font.UiSize}"
+        Title="About HoardPad">
+
+  <StackPanel Margin="16" Spacing="14">
+
+    <TextBlock Text="HoardPad"
+               FontSize="20" FontWeight="Bold"
+               Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+
+    <TextBlock TextWrapping="Wrap"
+               Foreground="{DynamicResource Brand.OnSurface.Brush}"
+               Text="A lightweight cross-platform text-and-code editor with Markdown preview, an agentic AI panel, and native .hoard checklists." />
+
+    <TextBlock Text="Keyboard Shortcuts"
+               FontWeight="Bold"
+               Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+
+    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+          RowSpacing="2" ColumnSpacing="12">
+      <TextBlock Grid.Row="0" Grid.Column="0" Text="Ctrl+F" Foreground="{DynamicResource Brand.Muted.Brush}" />
+      <TextBlock Grid.Row="0" Grid.Column="1" Text="Find" Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+      <TextBlock Grid.Row="1" Grid.Column="0" Text="Ctrl+H" Foreground="{DynamicResource Brand.Muted.Brush}" />
+      <TextBlock Grid.Row="1" Grid.Column="1" Text="Find and Replace" Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+      <TextBlock Grid.Row="2" Grid.Column="0" Text="Ctrl+Shift+V" Foreground="{DynamicResource Brand.Muted.Brush}" />
+      <TextBlock Grid.Row="2" Grid.Column="1" Text="Toggle Markdown Preview" Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+      <TextBlock Grid.Row="3" Grid.Column="0" Text="Ctrl+Tab" Foreground="{DynamicResource Brand.Muted.Brush}" />
+      <TextBlock Grid.Row="3" Grid.Column="1" Text="Next tab" Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+      <TextBlock Grid.Row="4" Grid.Column="0" Text="Ctrl+Shift+Tab" Foreground="{DynamicResource Brand.Muted.Brush}" />
+      <TextBlock Grid.Row="4" Grid.Column="1" Text="Previous tab" Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+      <TextBlock Grid.Row="5" Grid.Column="0" Text="Ctrl+W" Foreground="{DynamicResource Brand.Muted.Brush}" />
+      <TextBlock Grid.Row="5" Grid.Column="1" Text="Close tab" Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+      <TextBlock Grid.Row="6" Grid.Column="0" Text="Ctrl+Z / Ctrl+Y" Foreground="{DynamicResource Brand.Muted.Brush}" />
+      <TextBlock Grid.Row="6" Grid.Column="1" Text="Undo / Redo" Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+      <TextBlock Grid.Row="7" Grid.Column="0" Text="Ctrl+X / C / V" Foreground="{DynamicResource Brand.Muted.Brush}" />
+      <TextBlock Grid.Row="7" Grid.Column="1" Text="Cut / Copy / Paste" Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+      <TextBlock Grid.Row="8" Grid.Column="0" Text="Alt+Shift+Right/Left" Foreground="{DynamicResource Brand.Muted.Brush}" />
+      <TextBlock Grid.Row="8" Grid.Column="1" Text="Indent / outdent checklist item" Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+      <TextBlock Grid.Row="9" Grid.Column="0" Text="Alt+Up / Alt+Down" Foreground="{DynamicResource Brand.Muted.Brush}" />
+      <TextBlock Grid.Row="9" Grid.Column="1" Text="Move checklist item up / down" Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+    </Grid>
+
+    <Button x:Name="CloseButton"
+            Content="Close"
+            IsCancel="True"
+            IsDefault="True"
+            HorizontalAlignment="Right"
+            Click="OnClose" />
+
+  </StackPanel>
+</Window>

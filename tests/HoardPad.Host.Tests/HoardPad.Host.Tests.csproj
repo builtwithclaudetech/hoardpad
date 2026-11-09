@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- HoardPad.Host.Tests — seam impls against a temp FS (architecture §1.6).
+       References Host. -->
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\HoardPad.Host\HoardPad.Host.csproj" />
+    <!-- BUG-5: real-process argv probe. Composes launch args via the production
+         ClaudeLaunchContract.Compose (Core.Ai) and spawns them through the real
+         AgentBackend (below), proving the model/effort flags reach the OS process
+         argv unchanged, not just an in-memory assertion. -->
+    <ProjectReference Include="..\..\src\HoardPad.Core.Ai\HoardPad.Core.Ai.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+
+  <!-- Serialize test collections: the M5.2 backend/self-test tests each spawn child
+       processes (setsid launchers, hook subprocesses); running every test class in
+       parallel oversubscribes this box. Serial execution keeps the suite deterministic. -->
+  <ItemGroup>
+    <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

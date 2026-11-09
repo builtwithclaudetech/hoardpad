@@ -1,0 +1,47 @@
+<!--
+  RestoreConflictDialog.axaml — the FR-19 restore-conflict MODAL (design §9.6).
+
+  A real modal Window shown via ShowDialog(owner): it blocks before HoardPad arms a clobbering Save on a
+  recovered buffer whose on-disk file changed while the app was dead (§9.2 present-changed-externally).
+  Three actions — Keep my recovered version / Keep the version on disk / Show diff — with Keep-disk taking
+  INITIAL FOCUS (the conservative outcome: an accidental Enter must not clobber the newer on-disk file).
+  Mirrors the design §9.6 mock. Chrome uses the brand.md §13 tokens via DynamicResource.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="HoardPad.App.Views.RestoreConflictDialog"
+        Width="560" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource Brand.Surface.Brush}"
+        FontFamily="{DynamicResource Brand.Font.Ui}"
+        FontSize="{DynamicResource Brand.Font.UiSize}"
+        Title="Recovery conflict">
+
+  <StackPanel Margin="16" Spacing="14">
+
+    <TextBlock x:Name="HeadingText"
+               FontWeight="SemiBold"
+               TextWrapping="Wrap"
+               Foreground="{DynamicResource Brand.OnSurface.Brush}"
+               Text="Recovery conflict — a file changed on disk while HoardPad was closed" />
+
+    <TextBlock TextWrapping="Wrap"
+               Foreground="{DynamicResource Brand.Muted.Brush}"
+               Text="Your recovered version differs from the file now on disk (another tool, the other machine, or a sync daemon changed it)." />
+
+    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+      <Button x:Name="KeepRecoveredButton"
+              Content="Keep my recovered version"
+              Click="OnKeepRecovered" />
+      <Button x:Name="KeepDiskButton"
+              Content="Keep the version on disk"
+              Click="OnKeepDisk" />
+      <Button x:Name="ShowDiffButton"
+              Content="Show diff"
+              Click="OnShowDiff" />
+    </StackPanel>
+
+  </StackPanel>
+</Window>

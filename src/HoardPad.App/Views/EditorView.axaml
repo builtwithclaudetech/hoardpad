@@ -1,0 +1,65 @@
+<!--
+  EditorView.axaml — the M6.2 editor surface (design §3). Hosts the AvaloniaEdit TextEditor for the
+  active document: TextMate syntax highlighting (FR-7 lazy grammars), the FR-6 line ops (move/duplicate),
+  brace folding (FR-9 non-trimmable part), and the FR-6 cursor/EOL/encoding facts pushed to the editor
+  view-model for the status bar. The editor control + TextMate install are constructed in code-behind
+  (framework wiring, like MainWindow's icon wiring) — no business logic lives there; the testable editor
+  logic (line ops, folding, file I/O, grammar overlay) lives in HoardPad.App.Editor.
+
+  Font: the buffer + gutter use the Brand.Font.Code resource (brand.md §5 monospace fallback; JetBrains
+  Mono is not yet bundled — build report R4). Editor syntax colors are the TextMate theme (One Dark base,
+  brand.md §2); the chrome (no-document hint) uses the §13 brand brushes.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ae="using:AvaloniaEdit"
+             xmlns:vm="using:HoardPad.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="400"
+             x:Class="HoardPad.App.Views.EditorView"
+             x:DataType="vm:EditorViewModel"
+             Background="{DynamicResource Brand.Surface.Brush}">
+
+  <!-- FR-15 swap-in-place: the colorized-source editor and the read-only Markdown preview share this cell;
+       exactly one is visible at a time (side-by-side split is deferred, ODQ-8). The preview is a SEPARATE
+       read-only visual tree (MarkdownPreviewControl, added in code-behind) — it has no caret and never
+       touches the buffer, so a toggle-back yields a byte-identical buffer (SC-4). The TextEditor is never
+       destroyed on toggle, so its scroll position is retained when the user toggles back (design §4.4). -->
+  <Grid>
+
+    <!-- The TextEditor is created + wired in code-behind (TextMate install, grammar, folding, keybindings)
+         and inserted here by name; declaring it in XAML keeps the layout home explicit. Hidden (not
+         destroyed) while the preview shows. -->
+    <!-- FEAT-6: WordWrap is AvaloniaEdit's own display-only line-wrap flag (AvaloniaEdit.dll confirms
+         TextEditor.WordWrap is a plain styled bool property) — it wraps the RENDERED line only, never the
+         document text, so bytes on disk are unaffected. Bound one-way from the per-tab VM flag; toggled via
+         the View ▸ Word Wrap menu's ToggleWordWrapCommand (EditorViewModel), never written here. -->
+    <!-- F-EDIT1: right Padding is the correct AvaloniaEdit-native mechanism here — it reserves a blank
+         margin inside the TextEditor's own render viewport, closing the gap between the last glyph and
+         whatever sits immediately to the right (the AI-panel GridSplitter's column, or the editor's own
+         edge with no splitter at all) regardless of AI-panel open/closed or scrollbar visible/hidden state
+         — those are all downstream of THIS control's bounds, not upstream, so a single static value covers
+         every state without conditional logic. QA3-16 first set this to 6px and was live-verified clear of
+         occlusion (docs/tasklist.md QA3-16 reconciliation), but F-EDIT1 asks for a wider ~10px safety
+         margin against the same class of edge-of-viewport glyph clipping; this bumps the SAME Padding this
+         project already uses for it (not a second, competing fix) from 6px to 10px. -->
+    <ae:TextEditor x:Name="Editor"
+                   IsVisible="{Binding !IsPreviewVisible}"
+                   ShowLineNumbers="True"
+                   WordWrap="{Binding IsWordWrapEnabled}"
+                   FontFamily="{DynamicResource Brand.Font.Code}"
+                   FontSize="{DynamicResource Brand.Font.CodeSize}"
+                   Background="{DynamicResource Brand.Surface.Brush}"
+                   HorizontalScrollBarVisibility="Auto"
+                   VerticalScrollBarVisibility="Auto"
+                   Padding="0,0,10,0" />
+
+    <!-- The FR-15 rendered Markdown preview host. The MarkdownPreviewControl is inserted here in
+         code-behind on first toggle and rendered from the current buffer; shown only when IsPreviewVisible. -->
+    <ContentControl x:Name="PreviewHost"
+                    IsVisible="{Binding IsPreviewVisible}" />
+
+  </Grid>
+
+</UserControl>

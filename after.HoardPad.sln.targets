@@ -1,0 +1,22 @@
+<Project>
+
+  <!--
+    MSBuild auto-imports `after.<solution>.sln.targets` from the solution
+    directory into the generated solution metaproj.
+
+    The .NET 8 SDK's _CheckForSolutionLevelRuntimeIdentifier target hard-errors
+    (NETSDK1134) whenever a solution is built with a global RuntimeIdentifier
+    (`dotnet build HoardPad.sln -r <rid>`). HoardPad's per-milestone verify gate
+    requires exactly that invocation for both shipping RIDs (build-context.md:
+    "every milestone `dotnet build -r win-x64` AND `-r linux-x64` clean").
+
+    The RID is legitimately propagated to each project — class libraries ignore
+    it for a (non-publish) build, and HoardPad.App (RuntimeIdentifiers =
+    win-x64;linux-x64) honors it. Only the solution-level *guard* is the obstacle.
+    Redefining that one target as a no-op lets the RID flow to the projects while
+    keeping the documented gate command intact. The R2R publish guard in
+    Directory.Build.targets is unaffected (it fires on Publish, per project).
+  -->
+  <Target Name="_CheckForSolutionLevelRuntimeIdentifier" />
+
+</Project>

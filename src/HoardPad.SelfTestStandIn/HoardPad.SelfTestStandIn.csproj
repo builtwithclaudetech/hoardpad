@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- HoardPad.SelfTestStandIn — STF-3 (Option 1, per docs/stf-diagnosis.md): a tiny,
+       purpose-built stand-in that ToolPermissionHookHost's two self-tests launch INSTEAD OF
+       launcher.ExecutablePath (the real claude CLI, which has no knowledge of the descriptor
+       protocol and can never satisfy either self-test — see docs/stf-diagnosis.md §(a)).
+
+       This project is SELF-TEST-ONLY. It is never on the production turn-launch path
+       (AgentBackend.ResolveLauncher / StartTurnAsync are untouched). It reproduces, in C#, the
+       exact behavior already proven correct by the Python reference stand-ins in
+       tests/HoardPad.Host.Tests/HookHostTests.cs (FaithfulStandIn) and
+       tests/HoardPad.Host.Tests/ChannelKillSelfTestTests.cs (FaithfulHookOnKilledChannel) —
+       "productionize what the tests already prove," not new protocol design.
+
+       RuntimeIdentifiers match HoardPad.App (win-x64;linux-x64) so it publishes for both. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+</Project>

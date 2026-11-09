@@ -1,0 +1,116 @@
+<!--
+  FindReplaceView.axaml — the M6.7 docked Find/Replace panel (FR-17 / FR-18, design §3.5).
+
+  A custom in-editor UserControl docked at the TOP of the editor area (NOT a modal dialog — keeps the
+  matched text visible; NOT the stock AvaloniaEdit SearchPanel, which design §3.5 forbids). Header per the
+  §3.5 mockup: the Find box, the Replace box, the three toggles ([.*] regex / [Aa] case / [\b] whole-word),
+  the ◂ ▸ prev/next nav, the live "N of M" count, Replace / Replace All, and the scope radios (Current file
+  / All open / In folder). Visibility is the VM's IsVisible (Ctrl+F / Ctrl+H summon it, Esc closes it).
+  Chrome uses the brand.md §13 tokens via DynamicResource.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:HoardPad.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="780" d:DesignHeight="120"
+             x:Class="HoardPad.App.Views.FindReplaceView"
+             x:DataType="vm:FindReplaceViewModel"
+             IsVisible="{Binding IsVisible, FallbackValue=False}">
+
+  <!-- QA4-10: Alt+A triggers Replace All whenever keyboard focus is anywhere inside this panel. Scoped as a
+       KeyBinding on the panel itself (not an access-key mnemonic on the button) so it never collides with the
+       top-level "_AI" menu's own Alt+A mnemonic (MainWindow.axaml) — the panel's KeyBindings only fire while
+       focus is inside this subtree, per Avalonia's raised-key bubble-from-focused-element-to-root walk. -->
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Alt+A" Command="{Binding ReplaceAllCommand}" />
+  </UserControl.KeyBindings>
+
+  <Border Background="{DynamicResource Brand.SurfaceAlt.Brush}"
+          BorderBrush="{DynamicResource Brand.OverlaySurface.Brush}"
+          BorderThickness="0,0,0,1"
+          Padding="8,6">
+    <StackPanel Spacing="6">
+
+      <!-- Row 1: Find box + toggles + nav + live count + close button.
+           QA4-9: TabIndex is explicit on every focusable control in this panel (Avalonia falls back to
+           source order for any control WITHOUT one, so leaving the toggles/nav unset would let them sort
+           ahead of the Replace box below and break the required Find -> Replace adjacency). Order:
+           Find box(1) -> Replace box(2) -> Replace button(3) -> Replace All button(4) -> regex(5) ->
+           case(6) -> whole-word(7) -> prev(8) -> next(9) -> close(10) -> scope radios(11-13) -> Review(14). -->
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
+        <TextBlock Grid.Column="0" Text="Find:" VerticalAlignment="Center"
+                   Width="56" Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+        <TextBox Grid.Column="1" x:Name="FindBox"
+                 Text="{Binding FindText}"
+                 Watermark="find…"
+                 TabIndex="1" />
+
+        <!-- The three FR-18 toggles ([.*] regex, [Aa] case, [\b] whole-word). -->
+        <ToggleButton Grid.Column="2" x:Name="RegexToggle" Content=".*" ToolTip.Tip="Regex (off = literal)"
+                      IsChecked="{Binding UseRegex}"
+                      TabIndex="5" />
+        <ToggleButton Grid.Column="3" x:Name="CaseToggle" Content="Aa" ToolTip.Tip="Case-sensitive"
+                      IsChecked="{Binding CaseSensitive}"
+                      TabIndex="6" />
+        <ToggleButton Grid.Column="4" x:Name="WholeWordToggle" Content="\b" ToolTip.Tip="Whole word"
+                      IsChecked="{Binding WholeWord}"
+                      TabIndex="7" />
+
+        <Button Grid.Column="5" x:Name="PrevButton" Content="◂" ToolTip.Tip="Previous match (Shift+F3)"
+                Command="{Binding FindPreviousCommand}"
+                TabIndex="8" />
+        <Button Grid.Column="6" x:Name="NextButton" Content="▸" ToolTip.Tip="Next match (F3)"
+                Command="{Binding FindNextCommand}"
+                TabIndex="9" />
+
+        <TextBlock Grid.Column="7" Text="{Binding MatchCountLabel}"
+                   VerticalAlignment="Center" MinWidth="70"
+                   Foreground="{DynamicResource Brand.Muted.Brush}" />
+        <Button Grid.Column="8" x:Name="CloseButton" Content="×" Command="{Binding HideCommand}"
+                ToolTip.Tip="Close (Esc)"
+                Background="Transparent" BorderThickness="0" Padding="4,0"
+                Foreground="{DynamicResource Brand.Muted.Brush}"
+                VerticalAlignment="Center"
+                TabIndex="10" />
+      </Grid>
+
+      <!-- Row 2: Replace box + Replace / Replace All. -->
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
+        <TextBlock Grid.Column="0" Text="Replace:" VerticalAlignment="Center"
+                   Width="56" Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+        <TextBox Grid.Column="1" x:Name="ReplaceBox"
+                 Text="{Binding ReplaceText}"
+                 Watermark="replace…"
+                 TabIndex="2" />
+        <Button Grid.Column="2" x:Name="ReplaceButton" Content="Replace" Command="{Binding ReplaceCommand}" TabIndex="3" />
+        <Button Grid.Column="3" x:Name="ReplaceAllButton" Content="Replace All" Command="{Binding ReplaceAllCommand}" TabIndex="4" />
+      </Grid>
+
+      <!-- Row 3: scope radios + the in-folder review action + the status/summary line. -->
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="8">
+        <TextBlock Grid.Column="0" Text="Scope:" VerticalAlignment="Center"
+                   Width="56" Foreground="{DynamicResource Brand.OnSurface.Brush}" />
+        <RadioButton Grid.Column="1" x:Name="ScopeCurrentFileRadio" GroupName="FindScope" Content="Current file"
+                     IsChecked="{Binding Scope, Converter={x:Static vm:FindReplaceScopeConverters.CurrentFile}}"
+                     TabIndex="11" />
+        <RadioButton Grid.Column="2" x:Name="ScopeAllOpenRadio" GroupName="FindScope" Content="All open"
+                     IsChecked="{Binding Scope, Converter={x:Static vm:FindReplaceScopeConverters.AllOpen}}"
+                     TabIndex="12" />
+        <RadioButton Grid.Column="3" x:Name="ScopeInFolderRadio" GroupName="FindScope"
+                     Content="{Binding OpenFolderLabel}"
+                     IsEnabled="{Binding IsInFolderAvailable}"
+                     IsChecked="{Binding Scope, Converter={x:Static vm:FindReplaceScopeConverters.InFolder}}"
+                     TabIndex="13" />
+        <TextBlock Grid.Column="4" Text="{Binding StatusMessage}"
+                   VerticalAlignment="Center" Margin="8,0"
+                   Foreground="{DynamicResource Brand.Muted.Brush}" />
+        <Button Grid.Column="5" x:Name="ReviewButton" Content="Review…"
+                IsEnabled="{Binding IsInFolderAvailable}"
+                Command="{Binding ReviewInFolderCommand}"
+                TabIndex="14" />
+      </Grid>
+
+    </StackPanel>
+  </Border>
+</UserControl>
